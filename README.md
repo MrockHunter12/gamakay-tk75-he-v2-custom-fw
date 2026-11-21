@@ -1,6 +1,6 @@
 # GamaKay TK75 HE V2 ISO — Custom Open-Source VIA Firmware (Custom FW)
 
-[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%99%A5-ea4aaa?style=for-the-badge&logo=githubsponsors)](https://github.com/sponsors/MrockHunter12)
+[![Support on Ko-fi](https://img.shields.io/badge/Support%20on-Ko--fi-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/mrockhunter12)
 [![License: MIT](https://img.shields.io/badge/License-MIT-38E8FF?style=for-the-badge)](LICENSE)
 
 Native open-source C11 + TinyUSB **custom firmware** for the **GamaKay TK75 HE V2 ISO (AT32F405RCT7 + patched `U24` `YC3123-Q` TFT co-processor)** with full **VIA v12 (`0xFF60/0x0061`)** support on **Windows, macOS, and Linux** — no closed driver or background host software required.
@@ -146,4 +146,4 @@ python3 -m venv .venv
 
 ## Support This Project
 
-If this custom firmware saved your keyboard or added features you love, you can support ongoing development via **[GitHub Sponsors](https://github.com/sponsors/MrockHunter12)** or the **♥ Sponsor** button at the top of this repository!
+If this custom firmware saved your keyboard or added features you love, you can support ongoing development on **[Ko-fi](https://ko-fi.com/mrockhunter12)** or via the **♥ Sponsor** button at the top of this repository!
