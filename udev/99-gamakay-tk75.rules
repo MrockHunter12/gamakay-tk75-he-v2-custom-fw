@@ -1,0 +1,12 @@
+# GamaKay TK75 HE V2 - Non-root USB & WebHID / VIA permissions on Linux
+# Open-source VIA firmware (VID 0x3151, PID 0x502B)
+KERNEL=="hidraw*", ATTRS{idVendor}=="3151", ATTRS{idProduct}=="502b", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="3151", ATTRS{idProduct}=="502b", MODE="0660", TAG+="uaccess"
+
+# Stock RY Bootloader DFU mode (VID 0x3151, PID 0x502A)
+KERNEL=="hidraw*", ATTRS{idVendor}=="3151", ATTRS{idProduct}=="502a", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="3151", ATTRS{idProduct}=="502a", MODE="0660", TAG+="uaccess"
+
+# Stock GamaKay normal firmware (VID 0x3151, PID 0x5030 - needed for initial flash/restore)
+KERNEL=="hidraw*", ATTRS{idVendor}=="3151", ATTRS{idProduct}=="5030", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="3151", ATTRS{idProduct}=="5030", MODE="0660", TAG+="uaccess"

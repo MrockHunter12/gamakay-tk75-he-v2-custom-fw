@@ -1,0 +1,6 @@
+[submodule "third_party/at32f402_405_lib"]
+	path = third_party/at32f402_405_lib
+	url = https://github.com/ArteryTek/AT32F402_405_Firmware_Library.git
+[submodule "third_party/tinyusb"]
+	path = third_party/tinyusb
+	url = https://github.com/hathach/tinyusb.git

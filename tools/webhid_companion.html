@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TK75 HE V2 VIA WebHID Companion</title>
+  <style>
+    :root {
+      --bg: #0f1116;
+      --panel: #171a23;
+      --border: #272c3a;
+      --accent: #38bdf8;
+      --accent-2: #a855f7;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --good: #22c55e;
+    }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; background: var(--bg); color: var(--text); padding: 24px; }
+    .container { max-width: 1120px; margin: 0 auto; display: grid; gap: 18px; }
+    header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; }
+    h1 { margin: 0; font-size: 1.25rem; }
+    .sub { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    button { background: #232838; color: var(--text); border: 1px solid var(--border);
+      padding: 9px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+    button.primary { background: var(--accent); color: #07131f; border-color: transparent; }
+    button.warn { background: #ef4444; color: #fff; border-color: transparent; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .grid { display: grid; grid-template-columns: 2fr 1fr; gap: 18px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+    .card h2 { margin: 0 0 12px; font-size: 1rem; color: var(--accent); }
+    .matrix { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); gap: 5px; }
+    .keycell { background: #1e2330; border: 1px solid #2e3446; border-radius: 6px; padding: 6px 2px;
+      text-align: center; cursor: pointer; position: relative; overflow: hidden; min-height: 46px; }
+    .keycell.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .keycell.inactive { opacity: 0.2; cursor: default; }
+    .keybar { position: absolute; left: 0; bottom: 0; width: 100%; background: linear-gradient(180deg, var(--accent), var(--accent-2));
+      opacity: 0.45; pointer-events: none; transition: height 40ms linear; }
+    .keylbl { position: relative; z-index: 1; font-size: 0.68rem; font-weight: 700; }
+    .keymm { position: relative; z-index: 1; font-size: 0.62rem; color: var(--muted); }
+    label { display: grid; gap: 4px; font-size: 0.85rem; margin-bottom: 10px; }
+    input[type="range"], select { width: 100%; accent-color: var(--accent); background: #10131a;
+      color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px; }
+    .pill { font-size: 0.78rem; padding: 4px 10px; border-radius: 999px; background: #1e293b; color: var(--muted); }
+    .pill.ok { background: #14532d; color: #86efac; }
+    canvas { border: 1px solid var(--border); border-radius: 8px; image-rendering: pixelated; background: #000; }
+    pre { background: #0b0d12; padding: 10px; border-radius: 8px; font-size: 0.78rem; color: var(--muted); overflow: auto; max-height: 110px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>GamaKay TK75 HE V2 · Open VIA WebHID Companion</h1>
+        <div class="sub">Cross-platform Chrome/Edge WebHID utility (Windows &amp; Linux) · VID 0x3151 · PID 0x502B · Usage Page 0xFF60</div>
+      </div>
+      <div class="row">
+        <span id="statusPill" class="pill">Disconnected</span>
+        <button id="btnConnect" class="primary">Connect Keyboard</button>
+        <button id="btnSave" disabled>Save EEPROM</button>
+        <button id="btnBoot" class="warn" disabled>Enter Bootloader</button>
+      </div>
+    </header>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Live 90-Slot Hall Magnetometer Travel (click key for per-key tuning)</h2>
+        <div id="matrix" class="matrix"></div>
+      </div>
+
+      <div class="card">
+        <h2>Selected Key Override</h2>
+        <div id="selLabel" class="sub" style="margin-bottom:10px;">Select any key on the left</div>
+        <label>
+          Per-Key Actuation (<span id="actVal">Global</span>)
+          <input id="rngAct" type="range" min="0" max="78" value="0" disabled />
+        </label>
+        <label>
+          Per-Key Rapid Trigger Sensitivity (<span id="rtVal">Global</span>)
+          <input id="rngRt" type="range" min="0" max="40" value="0" disabled />
+        </label>
+        <div class="row" style="margin-bottom:12px;">
+          <button id="btnPerKeyEnableRT" disabled>Toggle Key RT Override</button>
+          <button id="btnRezero" disabled>Re-Zero Idle Baseline</button>
+        </div>
+
+        <h2>Smart TFT HUD &amp; Clock</h2>
+        <div class="row" style="margin-bottom:10px;">
+          <button id="btnClock" disabled>Sync PC Clock -&gt; TFT</button>
+          <select id="selPage" disabled style="width:auto; flex:1;">
+            <option value="0">Page 0: Main Status &amp; Clock</option>
+            <option value="1">Page 1: Hall Travel &amp; RT</option>
+            <option value="2">Page 2: Live WPM &amp; Layer</option>
+            <option value="3">Page 3: SOCD Monitor</option>
+            <option value="4">Page 4: Custom Logo / GIF</option>
+            <option value="5">Page 5: FW &amp; Battery</option>
+          </select>
+        </div>
+        <label>
+          Upload Custom Image (auto-scaled 128x128 RGB565)
+          <input id="fileImg" type="file" accept="image/*" disabled />
+        </label>
+        <div class="row">
+          <canvas id="previewCanvas" width="128" height="128"></canvas>
+          <button id="btnUploadImg" disabled>Stream to TFT</button>
+          <button id="btnEraseImg" disabled>Erase Flash</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Protocol Log</h2>
+      <pre id="logBox">Ready. Click "Connect Keyboard" in Chrome or Edge.</pre>
+    </div>
+  </div>
+
+  <script>
+    const KEY_LABELS = [
+      ["Esc","F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12","Del",""],
+      ["`","1","2","3","4","5","6","7","8","9","0","-","=","Bksp","Home"],
+      ["Tab","Q","W","E","R","T","Y","U","I","O","P","[","]","","PgUp"],
+      ["Caps","A","S","D","F","G","H","J","K","L",";","'","#","Enter","PgDn"],
+      ["LSh","<>","Z","X","C","V","B","N","M",",",".","/","RSh","Up",""],
+      ["LCtl","LWin","LAlt","","","","Space","","","RAlt","Fn","RCtl","Left","Down","Right"]
+    ];
+
+    let dev = null;
+    let pollTimer = null;
+    let selectedSlot = -1;
+    let keyRtOverride = false;
+    let rgb565Payload = null;
+    const pendingResolvers = [];
+
+    const log = (msg) => {
+      const el = document.getElementById("logBox");
+      el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent.slice(0, 1200);
+    };
+
+    const matrixEl = document.getElementById("matrix");
+    const cells = [];
+    for (let r = 0; r < 6; r++) {
+      for (let c = 0; c < 15; c++) {
+        const idx = r * 15 + c;
+        const lbl = KEY_LABELS[r][c];
+        const cell = document.createElement("div");
+        cell.className = "keycell" + (lbl ? "" : " inactive");
+        cell.innerHTML = `<div class="keybar" style="height:0%"></div><div class="keylbl">${lbl || "·"}</div><div class="keymm">0.0</div>`;
+        if (lbl) cell.onclick = () => selectKey(r, c, lbl);
+        matrixEl.appendChild(cell);
+        cells.push(cell);
+      }
+    }
+
+    async function sendVia(bytes) {
+      const buf = new Uint8Array(32);
+      buf.set(bytes.slice(0, 32));
+      return new Promise((resolve, reject) => {
+        pendingResolvers.push({ resolve, reject });
+        dev.sendReport(0x00, buf).catch(reject);
+        setTimeout(() => {
+          const i = pendingResolvers.findIndex((p) => p.resolve === resolve);
+          if (i >= 0) pendingResolvers.splice(i, 1);
+          resolve(null);
+        }, 250);
+      });
+    }
+
+    async function selectKey(r, c, lbl) {
+      selectedSlot = r * 15 + c;
+      cells.forEach((el, i) => el.classList.toggle("selected", i === selectedSlot));
+      document.getElementById("selLabel").textContent = `Key "${lbl}" (row=${r}, col=${c})`;
+      document.getElementById("rngAct").disabled = false;
+      document.getElementById("rngRt").disabled = false;
+      document.getElementById("btnPerKeyEnableRT").disabled = false;
+      const rep = await sendVia([0x08, 0x08, 4, r, c]);
+      if (rep) {
+        document.getElementById("rngAct").value = rep[5];
+        keyRtOverride = (rep[6] & 1) !== 0;
+        document.getElementById("rngRt").value = rep[6] >> 2;
+        updateOverrideLabels();
+      }
+    }
+
+    function updateOverrideLabels() {
+      const a = Number(document.getElementById("rngAct").value);
+      const rt = Number(document.getElementById("rngRt").value);
+      document.getElementById("actVal").textContent = a >= 2 ? `${(a * 0.05).toFixed(2)} mm` : "Global";
+      document.getElementById("rtVal").textContent = keyRtOverride ? `${(rt * 0.05).toFixed(2)} mm` : "Global";
+    }
+
+    async function writePerKeyOverride() {
+      if (selectedSlot < 0) return;
+      const r = Math.floor(selectedSlot / 15), c = selectedSlot % 15;
+      const act = Number(document.getElementById("rngAct").value);
+      const rtStep = Number(document.getElementById("rngRt").value);
+      const rtByte = keyRtOverride ? (0x03 | ((rtStep & 0x3F) << 2)) : 0;
+      await sendVia([0x07, 0x08, 4, r, c, act, rtByte]);
+      updateOverrideLabels();
+    }
+
+    document.getElementById("rngAct").onchange = writePerKeyOverride;
+    document.getElementById("rngRt").onchange = () => { keyRtOverride = true; writePerKeyOverride(); };
+    document.getElementById("btnPerKeyEnableRT").onclick = () => { keyRtOverride = !keyRtOverride; writePerKeyOverride(); };
+
+    document.getElementById("btnConnect").onclick = async () => {
+      const devices = await navigator.hid.requestDevice({
+        filters: [{ vendorId: 0x3151, productId: 0x502B, usagePage: 0xFF60 }]
+      });
+      if (!devices.length) return;
+      dev = devices[0];
+      await dev.open();
+      dev.addEventListener("inputreport", (e) => {
+        const data = new Uint8Array(e.data.buffer);
+        const item = pendingResolvers.shift();
+        if (item) item.resolve(data);
+      });
+      document.getElementById("statusPill").textContent = "Connected (3151:502B)";
+      document.getElementById("statusPill").classList.add("ok");
+      ["btnSave","btnBoot","btnRezero","btnClock","selPage","fileImg","btnEraseImg"].forEach(id => document.getElementById(id).disabled = false);
+      log("Connected via WebHID.");
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        if (!dev || !dev.opened) return;
+        for (const off of [0, 27, 54, 81]) {
+          const rep = await sendVia([0x08, 0x08, 1, off]);
+          if (!rep) continue;
+          const cnt = rep[4];
+          for (let i = 0; i < cnt && off + i < 90; i++) {
+            const val = rep[5 + i];
+            const cell = cells[off + i];
+            cell.querySelector(".keybar").style.height = `${Math.min(100, (val / 40) * 100)}%`;
+            cell.querySelector(".keymm").textContent = (val * 0.1).toFixed(1);
+          }
+        }
+      }, 45);
+    };
+
+    document.getElementById("btnRezero").onclick = () => sendVia([0x07, 5, 9, 1]).then(() => log("Re-zeroed Hall idle baseline."));
+    document.getElementById("btnSave").onclick = () => sendVia([0x09]).then(() => log("Saved EEPROM."));
+    document.getElementById("btnBoot").onclick = () => sendVia([0x0B]).then(() => log("Entered DFU Bootloader (3151:502A)."));
+    document.getElementById("selPage").onchange = (e) => sendVia([0x07, 7, 2, Number(e.target.value)]);
+    document.getElementById("btnClock").onclick = () => {
+      const d = new Date();
+      sendVia([0x07, 8, 2, d.getFullYear() >> 8, d.getFullYear() & 0xFF, d.getMonth() + 1, d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()])
+        .then(() => log("Synced PC clock to TFT."));
+    };
+
+    document.getElementById("fileImg").onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const img = new Image();
+      img.onload = () => {
+        const ctx = document.getElementById("previewCanvas").getContext("2d");
+        ctx.drawImage(img, 0, 0, 128, 128);
+        const px = ctx.getImageData(0, 0, 128, 128).data;
+        const out = new Uint8Array(128 * 128 * 2);
+        let j = 0;
+        for (let x = 0; x < 128; x++) {
+          for (let y = 0; y < 128; y++) {
+            const i = (y * 128 + x) * 4;
+            const v = ((px[i] & 0xF8) << 8) | ((px[i + 1] & 0xFC) << 3) | (px[i + 2] >> 3);
+            out[j++] = v >> 8;
+            out[j++] = v & 0xFF;
+          }
+        }
+        rgb565Payload = out;
+        document.getElementById("btnUploadImg").disabled = false;
+        log(`Prepared ${file.name} (${out.length} B column-major BE RGB565).`);
+      };
+      img.src = URL.createObjectURL(file);
+    };
+
+    document.getElementById("btnEraseImg").onclick = async () => {
+      await sendVia([0x07, 8, 3, 0x04, 0, 0, 0]);
+      log("Sent TFT custom media flash erase (cmd 0x05).");
+    };
+
+    document.getElementById("btnUploadImg").onclick = async () => {
+      if (!rgb565Payload) return;
+      const len = rgb565Payload.length;
+      const prep = new Uint8Array(32);
+      prep.set([0x07, 8, 3, 0x01, 0xFF, 0xFF, 10, 0, 1, 0, len & 0xFF, (len >> 8) & 0xFF, (len >> 16) & 0xFF, (len >> 24) & 0xFF, 128, 0, 128]);
+      await sendVia(prep);
+      const total = Math.ceil(len / 24);
+      for (let seq = 0; seq < total; seq++) {
+        const slice = rgb565Payload.slice(seq * 24, (seq + 1) * 24);
+        const flags = seq === total - 1 ? 2 : 0;
+        const pkt = new Uint8Array(32);
+        pkt.set([0x07, 8, 3, flags, seq >> 8, seq & 0xFF, slice.length]);
+        pkt.set(slice, 7);
+        await sendVia(pkt);
+      }
+      log(`Streamed ${total} chunks to TFT screen.`);
+    };
+  </script>
+</body>
+</html>
