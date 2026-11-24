@@ -1708,11 +1708,10 @@ static int test_pixel_hud(void)
   CHECK(pixel_hud_input(&px, HUD_MENU_ACT_PREV, 1300U));
   CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1310U));
 
-  /* Close menu -> returns cleanly to HOME with left wipe animation (no uint8 underflow on x) */
+  /* Close menu -> returns immediately to HOME with ZERO wipe animation */
   pixel_hud_close_menu(&px);
-  CHECK(!pixel_hud_is_menu_open(&px) && px.page == PIXEL_PAGE_HOME && px.wipe_step == 1U);
-  uint32_t saw_left_zero = 0U;
-  for (uint32_t t = 1320U; t < 1600U; t += 10U) {
+  CHECK(!pixel_hud_is_menu_open(&px) && px.page == PIXEL_PAGE_HOME && px.full_redraw_needed);
+  for (uint32_t t = 1320U; t < 1700U && (px.q_count > 0U || px.full_redraw_needed || px.body_redraw_needed); t += 10U) {
     rec.count = 0U;
     pixel_hud_tick(&px, t);
     pixel_hud_on_rx(&px, &ack);
@@ -1720,28 +1719,27 @@ static int test_pixel_hud(void)
       uint8_t n = rec.last_payload[1];
       for (uint8_t i = 0U; i < n; i++) {
         uint8_t rx_x = rec.last_payload[2U + i * 6U];
-        CHECK(rx_x < 128U);
-        if (rx_x == 0U && rec.last_payload[2U + i * 6U + 1U] == 19U) {
-          saw_left_zero = 1U;
-        }
+        uint8_t rx_y = rec.last_payload[2U + i * 6U + 1U];
+        CHECK(rx_x < 128U && rx_y < 128U);
       }
     }
   }
-  CHECK(saw_left_zero == 1U && px.wipe_step == 0U);
+  CHECK(px.q_count == 0U && !px.full_redraw_needed);
 
-  /* Switch UI: PIXEL -> STOCK via SYSTEM row 3 -> clears full 128x128 to 0x18E4 then sends MANUAL=0 */
+  /* Open menu -> verify PREV wraps cleanly across all 7 pages: BRIGHTNESS -> HOME -> SYSTEM -> POWER -> MACRO */
   pixel_hud_open_menu(&px, 1600U);
   for (uint32_t t = 1610U; t < 1800U; t += 10U) {
     pixel_hud_tick(&px, t);
     pixel_hud_on_rx(&px, &ack);
   }
-  /* From BRIGHTNESS row 1 -> row 0 (tab bar) -> verify PREV (left) wraps cleanly across all 5 pages */
   CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_PREV, 1810U));
   CHECK(px.focus_row == 0U && px.page == PIXEL_PAGE_BRIGHTNESS);
   CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_PREV, 1812U));
   CHECK(px.page == PIXEL_PAGE_HOME);
   CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_PREV, 1814U));
   CHECK(px.page == PIXEL_PAGE_SYSTEM);
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_PREV, 1815U));
+  CHECK(px.page == PIXEL_PAGE_POWER);
   CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_PREV, 1816U));
   CHECK(px.page == PIXEL_PAGE_MACRO);
 
@@ -1765,33 +1763,57 @@ static int test_pixel_hud(void)
   CHECK(!px.editing && px.macro_play_req == 1U);
   CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1843U)); /* wrap row 3 -> row 0 (tab bar) */
   CHECK(px.focus_row == 0U);
+
+  /* Navigate MACRO -> POWER: test ECO timeout, SAVR, RATE, CLK */
   CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1844U));
-  CHECK(px.page == PIXEL_PAGE_SYSTEM);
-  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1845U));
-  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1850U)); /* row 2: OS */
-  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1855U)); /* row 3: SAVR */
-  CHECK(px.focus_row == 3U);
-  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1858U));
-  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1860U));  /* toggle SAVR OFF */
+  CHECK(px.page == PIXEL_PAGE_POWER);
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1845U));   /* row 1: ECO (default 5 min) */
+  CHECK(px.focus_row == 1U);
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1846U));
+  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1847U));  /* 5m -> 10m */
+  CHECK(cfg.sleep_timeout_min == 10U);
+  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_PREV, 1848U));  /* 10m -> 5m */
+  CHECK(cfg.sleep_timeout_min == 5U);
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1849U));
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1850U)); /* row 2: SAVR */
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1851U));
+  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1852U));  /* toggle SAVR OFF */
   CHECK(cfg.tft_screensaver == 0U);
-  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1862U));
-  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1865U)); /* row 4: UI */
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1853U));
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1854U)); /* row 3: RATE */
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1855U));
+  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1856U));  /* 1000Hz -> 500Hz */
+  CHECK(cfg.rf_poll_rate_idx == 1U);
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1857U));
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1858U)); /* row 4: CLK */
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1859U));
+  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1860U));  /* 24H -> 12H */
+  CHECK(cfg.tft_clock_24h == 0U);
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1861U));
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1862U)); /* wrap -> row 0 */
+  CHECK(px.focus_row == 0U);
+
+  /* Navigate POWER -> SYSTEM: toggle WINL and switch SKIN PIXEL -> STOCK+ -> TERM -> PIXEL (all full-featured!) */
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1863U));
+  CHECK(px.page == PIXEL_PAGE_SYSTEM);
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1864U));   /* row 1: SPD */
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1865U)); /* row 2: OS */
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1866U)); /* row 3: WINL */
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1867U));
+  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1868U));
+  CHECK(cfg.win_lock == 1U);
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1869U));
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1870U)); /* row 4: SKIN */
   CHECK(px.focus_row == 4U);
-  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1870U));
-  for (uint32_t t = 1871U; px.q_count > 0U; t++) {
-    pixel_hud_tick(&px, t);
-    pixel_hud_on_rx(&px, &ack);
-  }
-  rec.count = 0U;
-  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1880U));
-  CHECK(!pixel_hud_is_active(&px) && px.stock_ui_mode && !px.menu_open && px.wipe_step == 0U);
-  for (uint32_t t = 1890U; t < 1940U; t += 10U) {
-    pixel_hud_tick(&px, t);
-    pixel_hud_on_rx(&px, &ack);
-  }
-  CHECK(rec.count >= 2U);
-  CHECK(rec.cmds[rec.count - 2U] == PIXEL_HUD_CMD_FILL_RECT);
-  CHECK(rec.cmds[rec.count - 1U] == PIXEL_HUD_CMD_MANUAL && rec.last_payload[0] == 0U);
+  CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1871U));
+  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1872U));  /* PIXEL -> STOCK+ */
+  CHECK(cfg.tft_theme == (uint8_t)TFT_THEME_STOCK_PLUS);
+  CHECK(pixel_hud_is_active(&px) && pixel_hud_is_menu_open(&px)); /* Full custom menu stays active in STOCK+! */
+  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1873U));  /* STOCK+ -> TERM */
+  CHECK(cfg.tft_theme == (uint8_t)TFT_THEME_TERMINAL);
+  CHECK(pixel_hud_is_active(&px) && pixel_hud_is_menu_open(&px));
+  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1874U));  /* TERM -> PIXEL wrap */
+  CHECK(cfg.tft_theme == (uint8_t)TFT_THEME_PIXEL);
   return 0;
 }
 
@@ -2372,6 +2394,239 @@ static int test_caps_sidelight(void)
   return 0;
 }
 
+static int test_themes_and_energy_save(void)
+{
+  /* 1. Verify ALL 6 directed theme switches, distinct theme backgrounds, zero wipe animation,
+   *    and 100% consistent feature access across PIXEL, STOCK+, and TERM themes! */
+  static uint16_t const k_expected_bg[TFT_THEME_COUNT] = { 0x0862U, 0x18E4U, 0x0020U };
+  static uint8_t const  k_pairs[6][2] = {
+    { TFT_THEME_PIXEL,      TFT_THEME_STOCK_PLUS },
+    { TFT_THEME_STOCK_PLUS, TFT_THEME_TERMINAL   },
+    { TFT_THEME_TERMINAL,   TFT_THEME_PIXEL      },
+    { TFT_THEME_PIXEL,      TFT_THEME_TERMINAL   },
+    { TFT_THEME_TERMINAL,   TFT_THEME_STOCK_PLUS },
+    { TFT_THEME_STOCK_PLUS, TFT_THEME_PIXEL      },
+  };
+
+  tk75_persist_cfg_t cfg;
+  tk75_cfg_set_defaults(&cfg);
+  tx_rec_t rec;
+  memset(&rec, 0, sizeof(rec));
+
+  pixel_hud_t px;
+  pixel_hud_init(&px, &cfg, record_tx, &rec);
+  uart7_rx_frame_t ver = { .cmd = 0xA5U, .payload_len = 3U, .payload = { 0x00U, 1U, 2U } };
+  uart7_rx_frame_t ack = { .cmd = 0xA1U, .payload_len = 0U };
+  pixel_hud_on_rx(&px, &ver);
+
+  pixel_hud_live_t live;
+  memset(&live, 0, sizeof(live));
+  live.battery_pct   = 82U;
+  live.vbus_present  = true;
+  live.charging      = true;
+  live.wpm           = 74U;
+  live.max_travel_um = 2200U;
+  live.any_actuated  = true;
+  live.rtc_valid     = true;
+  live.rtc_hour      = 14U;
+  live.rtc_min       = 35U;
+  live.rtc_sec       = 12U;
+  live.peak_wpm      = 110U;
+  live.session_keys  = 1234U;
+  pixel_hud_set_live(&px, &live);
+
+  uint32_t now = 100U;
+  for (uint8_t p = 0U; p < 6U; p++) {
+    uint8_t from_t = k_pairs[p][0];
+    uint8_t to_t   = k_pairs[p][1];
+
+    /* Set source theme via VIA ch=7 val=10 and drain */
+    via_context_t via;
+    memset(&via, 0, sizeof(via));
+    via.cfg = &cfg;
+    uint8_t req[VIA_RAW_EPSIZE] = { 0x07U, 7U, 10U, from_t };
+    uint8_t rep[VIA_RAW_EPSIZE] = { 0 };
+    via_process_packet(&via, req, rep);
+    CHECK(cfg.tft_theme == from_t);
+    for (uint32_t k = 0U; k < 60U; k++, now += 2U) {
+      pixel_hud_tick(&px, now);
+      pixel_hud_on_rx(&px, &ack);
+    }
+    CHECK(px.applied_theme == from_t && px.q_count == 0U);
+
+    /* Switch to target theme via VIA ch=7 val=10 and verify clean background repaint + zero errors */
+    req[3] = to_t;
+    via_process_packet(&via, req, rep);
+    CHECK(cfg.tft_theme == to_t);
+    req[0] = 0x08U;
+    via_process_packet(&via, req, rep);
+    CHECK(rep[3] == to_t);
+
+    uint16_t seen_bg = 0xFFFFU;
+    uint32_t ops_sent = 0U;
+    for (uint32_t k = 0U; k < 60U; k++, now += 2U) {
+      rec.count = 0U;
+      pixel_hud_tick(&px, now);
+      pixel_hud_on_rx(&px, &ack);
+      ops_sent += rec.count;
+      if (rec.count > 0U && rec.cmds[0] == PIXEL_HUD_CMD_FILL_RECT &&
+          rec.last_payload[2] == 128U && rec.last_payload[3] >= 92U) {
+        seen_bg = (uint16_t)(((uint16_t)rec.last_payload[4] << 8U) | rec.last_payload[5]);
+      }
+    }
+    CHECK(px.applied_theme == to_t && px.q_count == 0U && ops_sent > 0U);
+    CHECK(seen_bg == k_expected_bg[to_t]);
+  }
+
+  /* 2. Walk EVERY page & overlay in EVERY theme (PIXEL, STOCK+, TERM) verifying 100% feature parity */
+  for (uint8_t th = 0U; th < TFT_THEME_COUNT; th++) {
+    cfg.tft_theme = th;
+    pixel_hud_mark_config_dirty(&px);
+    pixel_hud_open_menu(&px, now);
+    CHECK(px.page == PIXEL_PAGE_BRIGHTNESS && px.focus_row == 1U);
+
+    /* Exercise all 7 pages via tab bar with zero wipe delay */
+    CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_PREV, now)); /* focus_row -> 0 */
+    for (uint8_t pg = 0U; pg < PIXEL_PAGE_COUNT; pg++) {
+      uint8_t expected_pg = (uint8_t)((PIXEL_PAGE_BRIGHTNESS + pg) % PIXEL_PAGE_COUNT);
+      CHECK(px.page == expected_pg);
+      for (uint32_t k = 0U; k < 60U; k++, now += 2U) {
+        rec.count = 0U;
+        pixel_hud_tick(&px, now);
+        pixel_hud_on_rx(&px, &ack);
+        if (rec.count > 0U && rec.cmds[0] == PIXEL_HUD_CMD_BATCH_RECT) {
+          uint8_t cnt = rec.last_payload[1];
+          CHECK(cnt <= 15U);
+          for (uint8_t i = 0U; i < cnt; i++) {
+            CHECK(rec.last_payload[2U + i * 6U] < 128U);
+            CHECK(rec.last_payload[2U + i * 6U + 1U] < 128U);
+          }
+        }
+      }
+      CHECK(px.q_count == 0U && px.applied_theme == th);
+      if (pg + 1U < PIXEL_PAGE_COUNT) {
+        CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_NEXT, now));
+      }
+    }
+
+    /* Verify HALL SWITCH supports all 4 SOCD modes (OFF->LAST->NEUT->FIRST->OFF) in every theme */
+    px.page = PIXEL_PAGE_SWITCH; px.focus_row = 3U; px.editing = true;
+    cfg.hall_socd_mode = HALL_SOCD_OFF;
+    CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, now)); CHECK(cfg.hall_socd_mode == HALL_SOCD_LAST_PRIORITY);
+    CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, now)); CHECK(cfg.hall_socd_mode == HALL_SOCD_NEUTRAL);
+    CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, now)); CHECK(cfg.hall_socd_mode == HALL_SOCD_FIRST_PRIORITY);
+    CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, now)); CHECK(cfg.hall_socd_mode == HALL_SOCD_OFF);
+
+    /* Verify POWER page ECO timeout cycles all 7 presets (0, 1, 2, 5, 10, 15, 30 -> 0) in every theme */
+    px.page = PIXEL_PAGE_POWER; px.focus_row = 1U; px.editing = true;
+    cfg.sleep_timeout_min = 0U;
+    static uint8_t const k_eco_seq[7] = { 1U, 2U, 5U, 10U, 15U, 30U, 0U };
+    for (uint8_t e = 0U; e < 7U; e++) {
+      CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, now));
+      CHECK(cfg.sleep_timeout_min == k_eco_seq[e]);
+    }
+    cfg.sleep_timeout_min = 5U;
+
+    /* Close menu -> test live HOME + Screensaver overlays in this theme */
+    pixel_hud_close_menu(&px);
+    for (uint32_t k = 0U; k < 40U; k++, now += 30U) {
+      live.rtc_sec = (uint8_t)((live.rtc_sec + 1U) % 60U);
+      pixel_hud_set_live(&px, &live);
+      pixel_hud_tick(&px, now);
+      pixel_hud_on_rx(&px, &ack);
+    }
+    for (uint32_t k = 0U; k < 30U && px.q_count > 0U; k++, now += 2U) {
+      pixel_hud_tick(&px, now);
+      pixel_hud_on_rx(&px, &ack);
+    }
+    CHECK(px.q_count == 0U && px.applied_theme == th);
+
+    /* Screensaver render in theme */
+    cfg.tft_screensaver = 1U;
+    live.any_actuated = false; live.idle_ms = 35000U;
+    pixel_hud_set_live(&px, &live);
+    for (uint32_t k = 0U; k < 40U; k++, now += 20U) {
+      pixel_hud_tick(&px, now);
+      pixel_hud_on_rx(&px, &ack);
+    }
+    CHECK(px.screensaver_active && px.q_count == 0U);
+    live.idle_ms = 0U; live.any_actuated = true;
+    pixel_hud_set_live(&px, &live);
+    for (uint32_t k = 0U; k < 40U; k++, now += 5U) {
+      pixel_hud_tick(&px, now);
+      pixel_hud_on_rx(&px, &ack);
+    }
+    CHECK(!px.screensaver_active);
+  }
+
+  /* 3. EEPROM persistence of tft_theme & sleep_timeout_min + invalid VIA theme clamp */
+  via_context_t via_cl;
+  memset(&via_cl, 0, sizeof(via_cl));
+  via_cl.cfg = &cfg;
+  uint8_t cl_req[VIA_RAW_EPSIZE] = { 0x07U, 7U, 10U, 99U };
+  uint8_t cl_rep[VIA_RAW_EPSIZE] = { 0 };
+  via_process_packet(&via_cl, cl_req, cl_rep);
+  CHECK(cfg.tft_theme == 0U);
+
+  mock_flash_t ram;
+  memset(&ram, 0xFF, sizeof(ram));
+  flash_eeprom_backend_t be = { .read_slot = mock_read, .erase_slot = mock_erase, .write_slot = mock_write, .ctx = &ram };
+  uint8_t slot = 0U;
+  cfg.tft_theme         = (uint8_t)TFT_THEME_TERMINAL;
+  cfg.sleep_timeout_min = 10U;
+  CHECK(flash_eeprom_save(&be, &cfg, &slot));
+  tk75_persist_cfg_t loaded;
+  (void)flash_eeprom_load(&be, &loaded);
+  CHECK(loaded.tft_theme == (uint8_t)TFT_THEME_TERMINAL && loaded.sleep_timeout_min == 10U);
+
+  /* 4. Verify division-free rgb_hsv_to_grb matches exact hue / 43U across all 256 hues */
+  for (uint16_t h = 0U; h < 256U; h++) {
+    rgb_grb_t got = rgb_hsv_to_grb((uint8_t)h, 255U, 200U);
+    uint8_t region = (uint8_t)(h / 43U);
+    uint8_t rem    = (uint8_t)((h - (region * 43U)) * 6U);
+    uint8_t q      = (uint8_t)(((uint16_t)200U * (255U - (((uint16_t)255U * rem) >> 8U))) >> 8U);
+    uint8_t t      = (uint8_t)(((uint16_t)200U * (255U - (((uint16_t)255U * (255U - rem)) >> 8U))) >> 8U);
+    uint8_t er = 0U, eg = 0U, eb = 0U;
+    switch (region) {
+      case 0U: er = 200U; eg = t;    eb = 0U;   break;
+      case 1U: er = q;    eg = 200U; eb = 0U;   break;
+      case 2U: er = 0U;   eg = 200U; eb = t;    break;
+      case 3U: er = 0U;   eg = q;    eb = 200U; break;
+      case 4U: er = t;    eg = 0U;   eb = 200U; break;
+      default: er = 200U; eg = 0U;   eb = q;    break;
+    }
+    CHECK(got.r == er && got.g == eg && got.b == eb);
+  }
+
+  /* 5. Verify hall_engine cached max_travel_um / pressed_count / any_actuated + macro boot_keys dedup */
+  uint16_t rest[HALL_SLOT_COUNT], span[HALL_SLOT_COUNT], adc[HALL_SLOT_COUNT];
+  for (uint32_t i = 0U; i < HALL_SLOT_COUNT; i++) { rest[i] = 2400U; span[i] = 1000U; adc[i] = 2400U; }
+  hall_engine_t hall;
+  hall_engine_init(&hall, rest, span);
+  hall_engine_process_frame(&hall, adc);
+  CHECK(!hall.any_actuated && hall.pressed_count == 0U && hall.max_travel_um == 0U);
+  adc[3U * HALL_COLS + 1U] = 1400U; /* press 'A' to bottom */
+  for (int f = 0; f < 16; f++) hall_engine_process_frame(&hall, adc);
+  CHECK(hall.any_actuated && hall.pressed_count == 1U && hall.max_travel_um >= 3800U);
+
+  /* Macro player deduplicates boot_keys if user already holds same key */
+  macro_player_t mp;
+  macro_player_init(&mp);
+  uint8_t const m_a[4] = { 0x01U, 0x01U, (uint8_t)KC_A, 0x00U };
+  uint8_t mbuf[TK75_MACRO_BUF_BYTES];
+  memset(mbuf, 0, sizeof(mbuf));
+  memcpy(mbuf, m_a, sizeof(m_a));
+  macro_player_trigger(&mp, mbuf, 0U, 0U);
+  keymap_report_t rep;
+  memset(&rep, 0, sizeof(rep));
+  rep.nkro_bitmap[KC_A >> 3U] = (uint8_t)(1U << (KC_A & 7U));
+  rep.boot_keys[0]            = (uint8_t)KC_A;
+  rep.pressed_count           = 1U;
+  macro_player_step(&mp, mbuf, 0U, &rep);
+  CHECK(rep.pressed_count == 1U && rep.boot_keys[0] == (uint8_t)KC_A && rep.boot_keys[1] == 0U);
+  return 0;
+}
+
 int main(void)
 {
   if (test_factory_cal() != 0) return 1;
@@ -2388,6 +2643,7 @@ int main(void)
   if (test_xtrfy_macro_recorder() != 0) return 1;
   if (test_hall_calibration() != 0) return 1;
   if (test_caps_sidelight() != 0) return 1;
+  if (test_themes_and_energy_save() != 0) return 1;
 
   printf("ALL_C_TESTS_PASSED checks=%u\n", g_checks);
   return 0;

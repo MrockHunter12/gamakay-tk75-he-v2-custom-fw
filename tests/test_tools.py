@@ -400,3 +400,111 @@ def test_via_backup_and_restore_roundtrip(tmp_path: pathlib.Path, monkeypatch: p
     assert tk75_dfu.main(["--restore-config", str(legacy_file)]) == 0
     assert dst_via.macros[:384] == legacy_via.macros
     assert dst_via.macros[384:] == bytes(tk75_dfu.VIA_MACRO_BYTES - 384)
+
+
+def test_tft_all_theme_switches_framebuffer(tmp_path: pathlib.Path) -> None:
+    """Compile sim_fb_bridge.c with real C HUD code & verify pixel-level framebuffers across all theme switches."""
+    import ctypes
+
+    so_path = tmp_path / "libsim_fb.so"
+    c_files = [
+        ROOT / "tools/sim_fb_bridge.c",
+        ROOT / "src/hall/hall_engine.c",
+        ROOT / "src/hall/hall_cal.c",
+        ROOT / "src/keymap/keymap.c",
+        ROOT / "src/keymap/macro_player.c",
+        ROOT / "src/keymap/macro_recorder.c",
+        ROOT / "src/storage/flash_eeprom.c",
+        ROOT / "src/rgb/rgb_effects.c",
+        ROOT / "src/tft/pixel_hud.c",
+    ]
+    inc_dirs = [
+        ROOT / "src/hall",
+        ROOT / "src/keymap",
+        ROOT / "src/storage",
+        ROOT / "src/rgb",
+        ROOT / "src/tft",
+        ROOT / "src/via",
+    ]
+    cmd = [
+        "gcc",
+        "-std=c11",
+        "-shared",
+        "-fPIC",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-O2",
+        *(f"-I{d}" for d in inc_dirs),
+        *(str(f) for f in c_files),
+        "-o",
+        str(so_path),
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    assert res.returncode == 0, res.stderr
+
+    lib = ctypes.CDLL(str(so_path))
+    lib.sim_init(None)
+    lib.sim_reset()
+
+    def capture(now_ms: int) -> bytes:
+        lib.sim_step(
+            ctypes.c_uint32(now_ms),
+            ctypes.c_uint16(68),
+            ctypes.c_uint16(95),
+            ctypes.c_uint32(321),
+            ctypes.c_uint8(0),
+            ctypes.c_uint8(0),
+            ctypes.c_uint32(1),
+            ctypes.c_uint8(0),
+            ctypes.c_uint8(0),
+            ctypes.c_uint16(0),
+            ctypes.c_uint8(0),
+            ctypes.c_uint8(0),
+            ctypes.c_uint32(0),
+            ctypes.c_uint8(14),
+            ctypes.c_uint8(25),
+            ctypes.c_uint8(10),
+            None,
+        )
+        buf = (ctypes.c_uint8 * (128 * 128 * 3))()
+        lib.sim_get_tft_rgb(buf)
+        return bytes(buf)
+
+    # Capture canonical Home & Menu frames for all 3 themes (0=PIXEL, 1=STOCK+, 2=TERM)
+    home_frames: dict[int, bytes] = {}
+    menu_frames: dict[int, bytes] = {}
+    t = 500
+    for theme in (0, 1, 2):
+        lib.sim_set_tft_theme(ctypes.c_uint8(theme))
+        lib.sim_hud_close_menu()
+        home_frames[theme] = capture(t)
+        t += 60
+        lib.sim_hud_open_menu(ctypes.c_uint32(t))
+        menu_frames[theme] = capture(t + 20)
+        t += 60
+
+    # All 3 themes must produce visibly distinct Home AND Menu framebuffers
+    assert home_frames[0] != home_frames[1]
+    assert home_frames[1] != home_frames[2]
+    assert home_frames[0] != home_frames[2]
+    assert menu_frames[0] != menu_frames[1]
+    assert menu_frames[1] != menu_frames[2]
+    assert menu_frames[0] != menu_frames[2]
+
+    # Exercise all 6 directed theme switches on both HOME & MENU and verify ZERO stale pixel residue
+    for src_t, dst_t in ((0, 1), (1, 2), (2, 0), (0, 2), (2, 1), (1, 0)):
+        lib.sim_set_tft_theme(ctypes.c_uint8(src_t))
+        lib.sim_hud_close_menu()
+        _ = capture(t)
+        t += 60
+        lib.sim_set_tft_theme(ctypes.c_uint8(dst_t))
+        got_home = capture(t)
+        t += 60
+        assert got_home == home_frames[dst_t], f"Stale Home pixels on switch {src_t}->{dst_t}"
+
+        lib.sim_hud_open_menu(ctypes.c_uint32(t))
+        got_menu = capture(t + 20)
+        t += 60
+        assert got_menu == menu_frames[dst_t], f"Stale Menu pixels on switch {src_t}->{dst_t}"
+
