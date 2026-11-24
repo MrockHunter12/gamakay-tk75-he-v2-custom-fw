@@ -71,67 +71,70 @@ def _draw_simple_eye(
 
 
 def gen_funny_eyes() -> None:
-    """30-frame clean minimal moving/side-eye/blinking cartoon eyes on pitch-black background."""
+    """31-frame smooth, slow, eased moving / side-eye / blinking eyes on pitch-black background."""
     frames: list[Image.Image] = []
     lcx, rcx, cy = 36, 92, 64
 
-    # 30 unique frames @ 145 ms (4.35s seamless loop): pure moving eyes, side-eye & blinking
+    # 31 unique smooth frames @ 165 ms (~5.1s calm, unhurried loop):
+    # Every motion glides in small 2-4 px ease-in-out steps with gentle holds & smooth 3-frame blinks.
     #  0-1: calm center
-    #  2-4: look right -> far right -> up-right
-    #  5-6: blink shut -> open
-    #  7-9: look left -> far left -> down-left
-    # 10-11: quick blink -> open
-    # 12-17: suspicious narrow side-eye (left -> pause -> slide right -> hold right)
-    # 18-20: look straight up -> top-right -> bottom-left
-    # 21-23: quick funny cross-eye glance -> blink
-    # 24-26: look right-down -> look left-up -> glance right
-    # 27-29: double blink -> settle back to center
+    #  2-5: smooth glide right (2 -> 6 -> 10 -> 12)
+    #  6-7: calm hold right
+    #  8-10: smooth 3-frame blink (closing -> shut -> opening)
+    # 11-15: smooth glide right -> left (8 -> 3 -> -3 -> -8 -> -12)
+    # 16-17: calm hold left
+    # 18-19: eyelids smoothly narrow into side-eye
+    # 20-24: slow sly side-eye glide left -> right (-11 -> -6 -> 0 -> 6 -> 11)
+    # 25-26: hold side-eye right -> eyelids smoothly open
+    # 27-28: smooth glide back to center (7 -> 3)
+    # 29-30: calm blink (shut -> opening into frame 0)
     keyframes = [
-        # (ldx, ldy, rdx, rdy, top_lid, bot_lid, l_tilt, r_tilt, blink_bar)
-        (0,   0,   0,   0,   0,  0,  0,  0, False),  # 0: center
-        (1,  -1,   1,  -1,   0,  0,  0,  0, False),  # 1: subtle settle
-        (8,  -1,   8,  -1,   0,  0,  0,  0, False),  # 2: glide right
-        (12, -2,  12,  -2,   0,  0,  0,  0, False),  # 3: look right
-        (11, -6,  11,  -6,   0,  0,  0,  0, False),  # 4: look up-right
-        (0,   0,   0,   0,   0,  0,  0,  0, True),   # 5: blink
-        (0,   0,   0,   0,  14, 10,  0,  0, False),  # 6: blink open
-        (-8, -1,  -8,  -1,   0,  0,  0,  0, False),  # 7: glide left
-        (-12,-2, -12,  -2,   0,  0,  0,  0, False),  # 8: look left
-        (-11, 5, -11,   5,   0,  0,  0,  0, False),  # 9: look down-left
-        (0,   0,   0,   0,   0,  0,  0,  0, True),   # 10: blink
-        (-2,  0,  -2,   0,  12,  8,  0,  0, False),  # 11: blink open
-        (-10, 2, -10,   2,  21, 15, -3,  3, False),  # 12: side-eye left
-        (-12, 2, -12,   2,  23, 15, -3,  3, False),  # 13: deeper side-eye left
-        (-9,  2,  -9,   2,  22, 16, -3,  3, False),  # 14: hold side-eye left
-        (4,   2,   4,   2,  22, 15, -3,  3, False),  # 15: slide across
-        (11,  2,  11,   2,  21, 15, -3,  3, False),  # 16: side-eye right
-        (12,  2,  12,   2,  23, 16, -3,  3, False),  # 17: hold side-eye right
-        (0, -11,   0, -11,   0,  0,  0,  0, False),  # 18: look up
-        (9,  -9,   9,  -9,   0,  0,  0,  0, False),  # 19: look top-right
-        (-9,  9,  -9,   9,   0,  0,  0,  0, False),  # 20: look bottom-left
-        (10,  2, -10,   2,   0,  0,  0,  0, False),  # 21: quick cross-eye
-        (11,  3, -11,   3,   0,  0,  0,  0, False),  # 22: cross-eye hold
-        (0,   0,   0,   0,   0,  0,  0,  0, True),   # 23: blink reset
-        (9,   6,   9,   6,   0,  0,  0,  0, False),  # 24: look down-right
-        (-9, -6,  -9,  -6,   0,  0,  0,  0, False),  # 25: look up-left
-        (6,   0,   6,   0,   0,  0,  0,  0, False),  # 26: quick right check
-        (0,   0,   0,   0,   0,  0,  0,  0, True),   # 27: double blink 1
-        (0,   0,   0,   0,  16, 12,  0,  0, False),  # 28: half-open
-        (-1,  0,  -1,   0,   0,  0,  0,  0, False),  # 29: calm center
+        # (dx, dy, top_lid, bot_lid, l_tilt, r_tilt, blink_bar)
+        (0.0,   0.0,  0,  0,  0,  0, False),  # 0: calm center
+        (0.6,  -0.3,  0,  0,  0,  0, False),  # 1: hold center (micro-drift prevents GIF frame merge)
+        (2.5,  -0.6,  0,  0,  0,  0, False),  # 2: ease right 1
+        (6.0,  -1.2,  0,  0,  0,  0, False),  # 3: ease right 2
+        (9.5,  -1.7,  0,  0,  0,  0, False),  # 4: ease right 3
+        (11.8, -2.0,  0,  0,  0,  0, False),  # 5: arrive right
+        (12.2, -2.0,  0,  0,  0,  0, False),  # 6: hold right 1
+        (11.6, -1.8,  0,  0,  0,  0, False),  # 7: hold right 2
+        (10.5, -1.2, 16, 12,  0,  0, False),  # 8: blink closing
+        (0.0,   0.0,  0,  0,  0,  0, True),   # 9: blink shut
+        (9.0,  -0.8, 15, 11,  0,  0, False),  # 10: blink opening
+        (7.5,  -0.5,  0,  0,  0,  0, False),  # 11: ease left 1
+        (2.5,   0.0,  0,  0,  0,  0, False),  # 12: ease left 2
+        (-3.0, -0.5,  0,  0,  0,  0, False),  # 13: ease left 3
+        (-8.0, -1.2,  0,  0,  0,  0, False),  # 14: ease left 4
+        (-11.5,-1.8,  0,  0,  0,  0, False),  # 15: arrive left
+        (-12.1,-1.8,  0,  0,  0,  0, False),  # 16: hold left 1
+        (-11.6,-1.2,  0,  0,  0,  0, False),  # 17: hold left 2
+        (-11.2, 0.5, 11,  8, -1,  1, False),  # 18: narrow lids 1
+        (-11.0, 1.5, 20, 14, -3,  3, False),  # 19: narrow lids 2 (side-eye left)
+        (-11.4, 2.0, 22, 15, -3,  3, False),  # 20: hold side-eye left
+        (-6.5,  2.0, 22, 15, -3,  3, False),  # 21: slow side-eye slide 1
+        (0.0,   2.0, 22, 15, -3,  3, False),  # 22: slow side-eye slide 2
+        (6.5,   2.0, 22, 15, -3,  3, False),  # 23: slow side-eye slide 3
+        (11.0,  2.0, 22, 15, -3,  3, False),  # 24: arrive side-eye right
+        (11.6,  2.0, 22, 15, -3,  3, False),  # 25: hold side-eye right
+        (10.0,  0.8, 11,  8, -1,  1, False),  # 26: lids opening
+        (6.5,   0.0,  0,  0,  0,  0, False),  # 27: ease to center 1
+        (2.5,   0.0,  0,  0,  0,  0, False),  # 28: ease to center 2
+        (0.0,   0.0,  0,  0,  0,  0, True),   # 29: calm blink shut
+        (0.0,   0.0, 15, 11,  0,  0, False),  # 30: blink opening into center
     ]
 
-    for ldx, ldy, rdx, rdy, tl, bl, lt, rt, blink_bar in keyframes:
+    for dx, dy, tl, bl, lt, rt, blink_bar in keyframes:
         img = Image.new("RGB", (128, 128), (0, 0, 0))
         d = ImageDraw.Draw(img)
         if blink_bar:
             d.rounded_rectangle((14, 62, 58, 67), radius=2, fill=(252, 253, 255))
             d.rounded_rectangle((70, 62, 114, 67), radius=2, fill=(252, 253, 255))
         else:
-            _draw_simple_eye(d, lcx, cy, ldx, ldy, top_lid=tl, bot_lid=bl, brow_tilt=lt)
-            _draw_simple_eye(d, rcx, cy, rdx, rdy, top_lid=tl, bot_lid=bl, brow_tilt=rt)
+            _draw_simple_eye(d, lcx, cy, dx, dy, top_lid=tl, bot_lid=bl, brow_tilt=lt)
+            _draw_simple_eye(d, rcx, cy, dx, dy, top_lid=tl, bot_lid=bl, brow_tilt=rt)
         frames.append(img)
 
-    _save_gif(frames, OUT_DIR / "funny_eyes.gif", duration_ms=145)
+    _save_gif(frames, OUT_DIR / "funny_eyes.gif", duration_ms=165)
 
 
 def gen_bongo_cat() -> None:

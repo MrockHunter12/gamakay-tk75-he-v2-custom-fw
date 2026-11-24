@@ -1974,9 +1974,11 @@ static void draw_screensaver_anim(pixel_hud_t *hud, bool force_all)
 
 static void batch_add_eye_sclera(rect_batch_t *b, uint8_t cx, uint8_t cy, uint16_t col)
 {
-  batch_add(b, (uint8_t)(cx - 12U), (uint8_t)(cy - 26U), 24U, 52U, col);
-  batch_add(b, (uint8_t)(cx - 17U), (uint8_t)(cy - 22U), 34U, 44U, col);
-  batch_add(b, (uint8_t)(cx - 21U), (uint8_t)(cy - 15U), 42U, 30U, col);
+  /* 4-band smooth rounded oval sclera (fits 2 eyes + clear = 9 rects <= MAX_BATCH_RECTS) */
+  batch_add(b, (uint8_t)(cx - 10U), (uint8_t)(cy - 28U), 20U, 56U, col);
+  batch_add(b, (uint8_t)(cx - 16U), (uint8_t)(cy - 24U), 32U, 48U, col);
+  batch_add(b, (uint8_t)(cx - 20U), (uint8_t)(cy - 18U), 40U, 36U, col);
+  batch_add(b, (uint8_t)(cx - 22U), (uint8_t)(cy - 11U), 44U, 22U, col);
 }
 
 static void batch_add_eye_pupil(rect_batch_t *b, uint8_t px, uint8_t py)
@@ -1986,47 +1988,86 @@ static void batch_add_eye_pupil(rect_batch_t *b, uint8_t px, uint8_t py)
   batch_add(b, (uint8_t)(px + 2U), (uint8_t)(py + 2U), 2U, 2U, SAVER_COL_WHITE);
 }
 
-static void draw_saver_eyes_frame(pixel_hud_t *hud)
+typedef struct {
+  uint8_t dur;      /* Duration in 60 ms ticks */
+  int8_t  dx;       /* Target pupil X offset */
+  int8_t  dy;       /* Target pupil Y offset */
+  uint8_t top_lid;  /* Target upper lid drop (0..26, >=26 = closed blink) */
+  uint8_t bot_lid;  /* Target lower lid rise (0..26) */
+} eye_kf_t;
+
+static int32_t smooth_lerp(int32_t a, int32_t b, uint32_t t, uint32_t dur)
 {
-  uint16_t step = hud->saver_step % 84U;
+  if (dur == 0U || t >= dur) {
+    return b;
+  }
+  /* Integer smoothstep: u = t/dur, s = u*u*(3 - 2*u) */
+  uint32_t u = (t * 256U) / dur;
+  uint32_t s = (u * u * (768U - (2U * u))) >> 16U;
+  return a + (((b - a) * (int32_t)s) / 256);
+}
+
+static void draw_saver_eyes_frame(pixel_hud_t *hud, bool force_draw)
+{
+  /* Calm ~11.2s loop at 60 ms/tick (~17 FPS): smooth eased glides, side-eye, gentle blinks */
+  static eye_kf_t const k_eye_seq[] = {
+    { 20U,   0,  0,  0U,  0U }, /* 1.2s calm center hold */
+    { 10U,  11, -2,  0U,  0U }, /* 0.6s smooth glide right */
+    { 20U,  11, -2,  0U,  0U }, /* 1.2s hold right */
+    {  3U,  11, -2, 26U, 26U }, /* smooth blink close */
+    {  4U,  11, -2,  0U,  0U }, /* smooth blink open */
+    { 15U, -11, -2,  0U,  0U }, /* 0.9s smooth glide left */
+    { 20U, -11, -2,  0U,  0U }, /* 1.2s hold left */
+    {  8U, -11,  2, 18U, 13U }, /* 0.5s narrow eyelids into side-eye */
+    { 14U, -11,  2, 18U, 13U }, /* 0.8s hold side-eye left */
+    { 18U,  11,  2, 18U, 13U }, /* 1.1s slow sly side-eye slide left -> right */
+    { 16U,  11,  2, 18U, 13U }, /* 1.0s hold side-eye right */
+    {  8U,  11,  0,  0U,  0U }, /* 0.5s eyelids smoothly open */
+    { 11U,   0,  0,  0U,  0U }, /* 0.7s smooth return to center */
+    {  6U,   0,  0,  0U,  0U }, /* 0.36s calm pause */
+    {  3U,   0,  0, 26U, 26U }, /* double blink 1 close */
+    {  4U,   0,  0,  0U,  0U }, /* double blink 1 open */
+    {  3U,   0,  0, 26U, 26U }, /* double blink 2 close */
+    {  4U,   0,  0,  0U,  0U }, /* double blink 2 open */
+  };
+  enum { EYE_KF_COUNT = (uint32_t)(sizeof(k_eye_seq) / sizeof(k_eye_seq[0])) };
+
+  uint32_t total_ticks = 0U;
+  for (uint32_t i = 0U; i < EYE_KF_COUNT; i++) {
+    total_ticks += k_eye_seq[i].dur;
+  }
+  uint32_t pos = hud->saver_step % total_ticks;
+  uint32_t seg = 0U;
+  while (seg + 1U < EYE_KF_COUNT && pos >= k_eye_seq[seg].dur) {
+    pos -= k_eye_seq[seg].dur;
+    seg++;
+  }
+  uint32_t prev_seg = (seg == 0U) ? (EYE_KF_COUNT - 1U) : (seg - 1U);
+  eye_kf_t const *a = &k_eye_seq[prev_seg];
+  eye_kf_t const *z = &k_eye_seq[seg];
+
+  int8_t  dx      = (int8_t)smooth_lerp(a->dx, z->dx, pos, z->dur);
+  int8_t  dy      = (int8_t)smooth_lerp(a->dy, z->dy, pos, z->dur);
+  uint8_t top_lid = (uint8_t)smooth_lerp(a->top_lid, z->top_lid, pos, z->dur);
+  uint8_t bot_lid = (uint8_t)smooth_lerp(a->bot_lid, z->bot_lid, pos, z->dur);
+  bool    blink   = (top_lid >= 25U && bot_lid >= 25U);
+
+  /* Zero UART traffic during calm holds when pixels are identical to last drawn frame */
+  uint32_t pose_hash = ((uint32_t)(uint8_t)(dx + 64) << 24U) |
+                       ((uint32_t)(uint8_t)(dy + 64) << 16U) |
+                       ((uint32_t)top_lid << 8U) |
+                       (uint32_t)bot_lid |
+                       (blink ? 0x80000000UL : 0UL);
+  if (!force_draw && pose_hash == hud->prev_saver_hash) {
+    return;
+  }
+  hud->prev_saver_hash = pose_hash;
+
   uint8_t const lcx = 36U;
   uint8_t const rcx = 92U;
   uint8_t const cy  = 64U;
 
-  int8_t  ldx = 0, ldy = 0, rdx = 0, rdy = 0;
-  uint8_t top_lid = 0U;
-  uint8_t bot_lid = 0U;
-  bool    blink   = false;
-
-  if (step < 6U) {
-    /* Calm center gaze */
-  } else if (step < 8U) {
-    blink = true;
-  } else if (step < 16U) {
-    ldx = 10; ldy = -2; rdx = 10; rdy = -2; /* Look right */
-  } else if (step < 24U) {
-    ldx = -10; ldy = -2; rdx = -10; rdy = -2; /* Look left */
-  } else if (step < 26U) {
-    blink = true;
-  } else if (step < 44U) {
-    /* Suspicious side-eye squint sweeping left -> right */
-    top_lid = 16U;
-    bot_lid = 12U;
-    int8_t dir = (step < 35U) ? -10 : 10;
-    ldx = dir; ldy = 2; rdx = dir; rdy = 2;
-  } else if (step < 52U) {
-    ldx = 0; ldy = -10; rdx = 0; rdy = -10; /* Look up */
-  } else if (step < 60U) {
-    ldx = 9; ldy = 7; rdx = 9; rdy = 7; /* Look down-right */
-  } else if (step < 68U) {
-    ldx = -9; ldy = -7; rdx = -9; rdy = -7; /* Look up-left */
-  } else if (step < 76U) {
-    ldx = 10; ldy = 2; rdx = -10; rdy = 2; /* Quick playful cross-eye glance */
-  } else if (step == 76U || step == 77U || step == 80U || step == 81U) {
-    blink = true; /* Double blink reset */
-  }
-
-  /* Batch 1: Clear eye region & draw clean rounded white scleras */
+  /* Batch 1: Clear eye region & draw smooth rounded white scleras */
   rect_batch_t b;
   batch_init(&b);
   batch_add(&b, 10U, 34U, 108U, 60U, SAVER_COL_BLACK);
@@ -2040,17 +2081,17 @@ static void draw_saver_eyes_frame(pixel_hud_t *hud)
   batch_add_eye_sclera(&b, rcx, cy, SAVER_COL_WHITE);
   batch_submit(hud, &b, false);
 
-  /* Batch 2: Clean glossy jet-black pupils + optional narrow side-eye lids */
+  /* Batch 2: Glossy jet-black pupils + smoothly interpolated eyelids */
   batch_init(&b);
-  batch_add_eye_pupil(&b, (uint8_t)(lcx + ldx), (uint8_t)(cy + ldy));
-  batch_add_eye_pupil(&b, (uint8_t)(rcx + rdx), (uint8_t)(cy + rdy));
+  batch_add_eye_pupil(&b, (uint8_t)(lcx + dx), (uint8_t)(cy + dy));
+  batch_add_eye_pupil(&b, (uint8_t)(rcx + dx), (uint8_t)(cy + dy));
   if (top_lid > 0U) {
-    batch_add(&b, 14U, 36U, 44U, top_lid, SAVER_COL_BLACK);
-    batch_add(&b, 70U, 36U, 44U, top_lid, SAVER_COL_BLACK);
+    batch_add(&b, 13U, 36U, 46U, top_lid, SAVER_COL_BLACK);
+    batch_add(&b, 69U, 36U, 46U, top_lid, SAVER_COL_BLACK);
   }
   if (bot_lid > 0U) {
-    batch_add(&b, 14U, (uint8_t)(92U - bot_lid), 44U, bot_lid, SAVER_COL_BLACK);
-    batch_add(&b, 70U, (uint8_t)(92U - bot_lid), 44U, bot_lid, SAVER_COL_BLACK);
+    batch_add(&b, 13U, (uint8_t)(92U - bot_lid), 46U, bot_lid, SAVER_COL_BLACK);
+    batch_add(&b, 69U, (uint8_t)(92U - bot_lid), 46U, bot_lid, SAVER_COL_BLACK);
   }
   batch_submit(hud, &b, true);
 }
@@ -3014,7 +3055,7 @@ void pixel_hud_tick(pixel_hud_t *hud, uint32_t now_ms)
           break;
         case TFT_SAVER_EYES:
           q_fill(hud, 0U, 0U, 128U, 128U, SAVER_COL_BLACK, false);
-          draw_saver_eyes_frame(hud);
+          draw_saver_eyes_frame(hud, true);
           break;
         case TFT_SAVER_CAT:
           draw_saver_cat_static(hud);
@@ -3052,10 +3093,10 @@ void pixel_hud_tick(pixel_hud_t *hud, uint32_t now_ms)
         pump_tx_queue(hud, now_ms);
       }
     } else if (saver_mode == (uint8_t)TFT_SAVER_EYES) {
-      if ((uint32_t)(now_ms - hud->last_anim_ms) >= 100U) {
+      if ((uint32_t)(now_ms - hud->last_anim_ms) >= 60U) {
         hud->last_anim_ms = now_ms;
         hud->saver_step++;
-        draw_saver_eyes_frame(hud);
+        draw_saver_eyes_frame(hud, false);
         pump_tx_queue(hud, now_ms);
       }
     } else if (saver_mode == (uint8_t)TFT_SAVER_CAT) {
