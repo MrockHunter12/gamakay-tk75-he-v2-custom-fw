@@ -10,19 +10,19 @@ Every live animation below is rendered **directly from the actual AT32F405 C fir
 ## Table of Contents
 
 1. [8 kHz Hall-Effect Engine, Rapid Trigger, SOCD & Per-Key Overrides](#1-8-khz-hall-effect-engine-rapid-trigger-socd--per-key-overrides)
-2. [6-Page Onboard Pixel-Art TFT Menu: Brightness, Colors & Lighting Effects](#2-6-page-onboard-pixel-art-tft-menu-brightness-colors--lighting-effects)
+2. [7-Page Multi-Theme Onboard TFT Menu: `PIXEL`, `STOCK+` & `TERM`](#2-7-page-multi-theme-onboard-tft-menu-pixel-stock--term)
 3. [Caps Lock → Vertical 8-LED Accent Bar Trigger & Selectable Effects](#3-caps-lock--vertical-8-led-accent-bar-trigger--selectable-effects)
 4. [Xtrfy K5-Style Onboard Macro Recorder, VIA Bytecode, Speed Control & Live Typing Glow](#4-xtrfy-k5-style-onboard-macro-recorder-via-bytecode-speed-control--live-typing-glow)
 5. [Interactive Onboard 82-Key Hall Switch Calibration](#5-interactive-onboard-82-key-hall-switch-calibration)
-6. [Zero-Software Pixel-Art Idle Screensaver & Instant Wake](#6-zero-software-pixel-art-idle-screensaver--instant-wake)
+6. [Selectable Idle Screensavers & Custom `U9` Animated GIFs](#6-selectable-idle-screensavers--custom-u9-animated-gifs)
 7. [Per-Layer RGB Indicators & Matrix Lighting Effects](#7-per-layer-rgb-indicators--matrix-lighting-effects)
-8. [Onboard Hall Switch, Macro & System Menus + Clean `Fn + F4` TFT Power-Gating](#8-onboard-hall-switch-macro--system-menus--clean-fn--f4-tft-power-gating)
+8. [Onboard Hall Switch, Macro, Power & System Menus + Clean `Fn + F4` TFT Power-Gating](#8-onboard-hall-switch-macro-power--system-menus--clean-fn--f4-tft-power-gating)
 9. [4-Mode CNC Rotary Knob & Per-Layer Encoder Bindings](#9-4-mode-cnc-rotary-knob--per-layer-encoder-bindings)
-10. [Tri-Mode Connectivity (8 kHz USB HS + 2.4 GHz + Bluetooth LE) & Battery Power Management](#10-tri-mode-connectivity-8-khz-usb-hs--24-ghz--bluetooth-le--battery-power-management)
+10. [Tri-Mode Connectivity, Deep Energy Save (`ECO`) & Low-Power Architecture](#10-tri-mode-connectivity-deep-energy-save-eco--low-power-architecture)
 11. [Native VIA v12, WebHID Companion & CLI Tooling](#11-native-via-v12-webhid-companion--cli-tooling)
 12. [Complete Keyboard Shortcuts Cheat-Sheet](#12-complete-keyboard-shortcuts-cheat-sheet)
 13. [Complete VIA v12 Custom Channel Map](#13-complete-via-v12-custom-channel-map)
-14. [Patched `U24` Co-Processor v1.2, Flash Layout & Unbrickable Recovery](#14-patched-u24-co-processor-v12-flash-layout--unbrickable-recovery)
+14. [Patched `U24` Co-Processor v1.4, Flash Layout & Unbrickable Recovery](#14-patched-u24-co-processor-v14-flash-layout--unbrickable-recovery)
 
 ---
 
@@ -51,25 +51,38 @@ Every live animation below is rendered **directly from the actual AT32F405 C fir
 
 ---
 
-## 2. 6-Page Onboard Pixel-Art TFT Menu: Brightness, Colors & Lighting Effects
+## 2. 7-Page Multi-Theme Onboard TFT Menu: `PIXEL`, `STOCK+` & `TERM`
 
 ![TFT Menu: Brightness, Colors & Lighting Effects](assets/02_tft_menu_brightness_lighting.gif)
 
-Press **`Fn + Knob Push`** to enter the interactive 6-page menu (auto-exits after 15 s of inactivity, or press **`Fn + Knob Push`** again anytime to return immediately to Volume mode).
+Press **`Fn + Knob Push`** to enter the interactive **7-page** menu (auto-exits after 15 s of inactivity, or press **`Fn + Knob Push`** again anytime to return immediately to Volume mode). Page switches are **instant** (zero page-wipe animation).
+
+### 3 Persistent Full-Featured Themes / Skins (`SYSTEM → SKIN` or VIA `ch=7 val_id=10`)
+
+Every single page, setting, macro editor, Hall calibration screen, and screensaver works identically across all 3 persistent themes — including a modified GamaKay **`STOCK+`** classic skin that keeps 100% of custom firmware features:
+
+| ID | Theme Name | Visual Style |
+|----|------------|--------------|
+| **`0`** | **`PIXEL`** *(default)* | Obsidian Cyber — deep navy `#0B0F17`, electric cyan/mint accents, animated left Hall-effect switch diagram on `HOME`, smooth continuous sliders |
+| **`1`** | **`STOCK+`** | Modified GamaKay Stock Classic — charcoal/graphite panels, electric blue ribbon & signature orange highlights, big classic **Hero Clock + WPM card** & 10-block stepped Hall gauge on `HOME`, 10-step segmented sliders, **full 7-page feature parity** |
+| **`2`** | **`TERM`** | Retro Phosphor CRT Terminal — pitch black `#000400`, bright green phosphor `#33FF66` wireframe corner brackets, `>` prompt headers, chunky 8-block CRT gauges |
+
+### Complete 7-Page Menu Structure (Identical Across All 3 Themes)
 
 | Page | Icon | Rows & Live Controls |
 |------|------|----------------------|
-| **0. `HOME`** | Status Bar | Live animated Hall switch, WPM, travel bar, battery, transport/layer, `RT / CAP / WIN / MAC` pills |
+| **0. `HOME`** | Status Bar | Live animated Hall switch (`PIXEL/TERM`) or Hero Clock + 10-block Hall gauge (`STOCK+`), WPM, battery, transport/layer, `RT / CAP / WIN / MAC / ECO` pills |
 | **1. `BRIGHTNESS`** | Sun | `TFT` (`0..100%` smooth non-flushing PWM), `RGB` (`0..100%`), `SID` (`0..100%` vertical accent bar), `CAP` (Caps Lock accent bar `OFF / SOLID / BREATH / WAVE / BLINK / SCAN`) |
 | **2. `LIGHTING`** | RGB Palette | `FX` (7 main RGB effects), `COL` (9 main color presets + **live RGB565 color swatch**), `SFX` (4 vertical accent bar effects), `SCOL` (9 accent bar color presets + **live RGB565 swatch**) |
-| **3. `HALL SWITCH`** | Switch Stem | `ACT` (`0.1..3.9 mm`), `RT` (`OFF / 0.2 / 0.4 / 0.8 / 1.2 mm`), `SOCD` (`OFF / LAST / NEUT`), `CAL` (`START` 1-click 82-key Hall calibration) |
+| **3. `HALL SWITCH`** | Switch Stem | `ACT` (`0.1..3.9 mm`), `RT` (`OFF / 0.2 / 0.4 / 0.8 / 1.2 mm`), `SOCD` (`OFF / LAST / NEUT / FIRST`), `CAL` (`START` 1-click 82-key Hall calibration) |
 | **4. `MACRO`** | Play Icon | `SPD` (`FAST / NORM / MED / SLOW / SAFE`), `STEP` (live ms & delay multiplier), `KEYS` (inspect & trigger saved `C V B N M` macros directly from the knob) |
-| **5. `SYSTEM`** | Gear | `SPD` (RGB + accent bar animation speed `10..100%`), `OS` (`WIN/LNX ↔ MACOS`), `SAVR` (idle screensaver `ON / OFF`), `UI` (`PIXEL ↔ STOCK` live toggle back to official GamaKay stock UI) |
+| **5. `POWER`** | Bolt | `ECO` (Deep Energy Save RGB+TFT off timeout: `OFF / 1 / 2 / 5 / 10 / 15 / 30 MIN`), `SAVR` (7 screensavers: `OFF / CLOCK / EYES / CAT / MATRIX / DVD / GIF`), `RATE` (RF poll rate `1000..125 Hz`), `CLK` (`24H / 12H`) |
+| **6. `SYSTEM`** | Gear | `SPD` (RGB + accent bar animation speed `10..100%`), `OS` (`WIN ↔ MACOS`), `WINL` (Windows Key Lock `OFF / LOCKED`), `SKIN` (`PIXEL ↔ STOCK+ ↔ TERM`, persisted in EEPROM) |
 
 **How to Navigate**:
-- Turn the rotary knob to highlight rows `1..4`; push the knob (`OK`) to enter amber **edit mode** (`TURN:SET`), turn to adjust live with instant hardware preview, push again to confirm.
-- Turn above row `1` or past row `4` to focus the top tab bar (`<>`), then turn left/right to switch pages with a smooth 3-step horizontal cyan pixel wipe.
-- **Persistent TFT Backlight Restore**: Saved `TFT` PWM brightness (`0..100%`) is automatically re-applied after cold boot, AT32 firmware flash, VIA restore, and `Fn + F4` power-cycles.
+- Turn the rotary knob to highlight rows `1..4`; push the knob (`OK`) to enter edit mode (`TURN:SET` / `DIAL:SET`), turn to adjust live with instant hardware preview, push again to confirm.
+- Turn above row `1` or past row `4` to focus the top tab bar (`<>`), then turn left/right to switch pages instantaneously.
+- **Persistent TFT Backlight Restore**: Saved `TFT` PWM brightness (`0..100%`) is automatically re-applied after cold boot, AT32 firmware flash, VIA restore, deep energy-save wake, and `Fn + F4` power-cycles.
 
 ---
 
@@ -149,21 +162,36 @@ Individual Hall-effect sensors and switch springs vary slightly in peak magnetic
 
 ---
 
-## 6. Zero-Software Pixel-Art Idle Screensaver & Instant Wake
+## 6. Selectable Idle Screensavers & Custom `U9` Animated GIFs
 
 ![Zero-Software Pixel-Art Idle Screensaver & Instant Wake](assets/06_screensaver_wake.gif)
 
-Works identically on **Windows, macOS, and Linux** with zero background host software:
+Activates automatically after **30 seconds** idle on `HOME` (on Windows, macOS, and Linux with zero host software) and wakes instantaneously on any keypress or knob input. Select your favorite frame directly on the keyboard (**`POWER → SAVR`**), in VIA (**TFT & Encoder → `ch=7, val_id=9`**), or via CLI (`tools/tk75_tft_gif.py set-mode <name>`):
 
-- Activates automatically after **30 seconds** idle on `HOME`.
-- **Live Pixel-Art Display**:
-  - Night sky with crescent moon, twinkling animated stars, `CLK` / `UP` indicator, and pixel battery gauge.
-  - Giant 2× **`HH:MM`** digital clock with blinking colon + live 60-second progress sweep bar (shows synced wall clock `CLK` after optional RTC sync, or automatic live uptime `UP` with zero host software).
-  - **Left System Card**: Active transport & poll rate (`USB 8K` / `2.4 1K` / `BT1..3 LE`) + OS & active layer (`WIN L0` / `MAC L2`).
-  - **Right Telemetry Card**: Hall actuation & Rapid Trigger status (`1.8 RT` / `1.8mm`) + session **Peak WPM** (`PK 118`).
-  - **Bottom Strip**: Priority status (`CAPS ON` / `WIN LOCK` / `NUM LOCK` / `SOCD:LAST` / `TYPE:WAKE`) + total session keystrokes (`K:1420`).
-- **Instant Wake**: Pressing any key or touching the rotary knob wakes instantly back to the live WPM `HOME` screen.
-- **Toggleable**: TFT **`SYSTEM → SAVR`** (`ON / OFF`) or VIA (**TFT & Encoder → `ch=7, val_id=9`**).
+| ID | Menu Label | Description |
+|----|------------|-------------|
+| **`0`** | **`OFF`** | Idle screensaver disabled (stays on live `HOME` until Deep Energy Save timeout) |
+| **`1`** | **`CLOCK`** | Themed night sky, crescent moon, twinkling stars, 2× digital clock (`CLK`/`UP`), 60 s bar, battery gauge, transport/OS/layer, Hall `ACT/RT`, Peak WPM, locks & session keystrokes |
+| **`2`** | **`EYES`** *(built-in)* | Pure black background, crisp white cartoon eyes calmly holding eye contact (`~2 s`), natural smooth eyelid blinks, 17 FPS smoothstep glides left/right, and sly side-eye squint — zero UART traffic during pauses |
+| **`3`** | **`CAT`** *(built-in)* | Cute pixel Bongo Cat on pure black slapping a glowing RGB mechanical mini-keyboard with blinking eyes, wagging tail & floating music sparks |
+| **`4`** | **`MATRIX`** *(built-in)* | Falling white-mint & phosphor-green ASCII Matrix digital rain on pure black |
+| **`5`** | **`DVD`** *(built-in)* | Color-shifting bouncing retro `TK75` DVD badge with gold corner-hit flash |
+| **`6`** | **`GIF`** | Plays **any custom 128×128 16-bit animated GIF** stored in external `U9` SPI NOR (`0x6C0000..0x7BFFFF`, up to **31 frames** with **exact per-frame GIF hold durations `33..10000 ms`** via `U24 v1.4` `TKGF v2`)! |
+
+### 5 Ready-to-Flash Funny GIFs Included ([assets/gifs/](../assets/gifs/))
+
+| `funny_eyes.gif` | `bongo_cat.gif` | `party_parrot.gif` | `nyan_space.gif` | `coffee_afk.gif` |
+|:-:|:-:|:-:|:-:|:-:|
+| ![Funny Eyes](../assets/gifs/funny_eyes.gif) | ![Bongo Cat](../assets/gifs/bongo_cat.gif) | ![Party Parrot](../assets/gifs/party_parrot.gif) | ![Nyan Space](../assets/gifs/nyan_space.gif) | ![Coffee AFK](../assets/gifs/coffee_afk.gif) |
+| 31f, `60..1900 ms` (11 s calm eye-contact loop) | 16f, `110 ms` RGB desk cat | 16f, `90 ms` rainbow parrot | 20f, `100 ms` space cat | 20f, `130 ms` steam mug |
+
+```bash
+# Flash any GIF / WebP / PNG to U9 (CRC32-verified), activate GIF screensaver & preview live:
+.venv/bin/python tools/tk75_tft_gif.py upload assets/gifs/funny_eyes.gif --preview 8
+.venv/bin/python tools/tk75_tft_gif.py info
+.venv/bin/python tools/tk75_tft_gif.py preview --seconds 6
+.venv/bin/python tools/tk75_tft_gif.py set-mode eyes
+```
 
 ---
 
@@ -180,14 +208,14 @@ Works identically on **Windows, macOS, and Linux** with zero background host sof
 
 ---
 
-## 8. Onboard Hall Switch, Macro & System Menus + Clean `Fn + F4` TFT Power-Gating
+## 8. Onboard Hall Switch, Macro, Power & System Menus + Clean `Fn + F4` TFT Power-Gating
 
 ![Onboard Hall Switch, Macro & System Menus + Fn+F4 TFT Power](assets/08_hall_macro_system_power.gif)
 
-- **Zero-PC Onboard Tuning**: Adjust Hall actuation (`ACT`), Rapid Trigger (`RT`), SOCD, Macro playback speed & direct macro trigger (`KEYS`), RGB/Accent bar speed (`SPD`), `WIN/LNX ↔ MACOS` OS mode, Screensaver (`SAVR`), and live **`PIXEL ↔ STOCK`** UI toggle right from the rotary knob.
-- **True 0 V Hardware TFT Power-Gating (`Fn + F4`)** ([src/tft/uart7_tft.c](../src/tft/uart7_tft.c), [src/main.c](../src/main.c)):
-  - Pressing `Fn + F4` to turn the TFT OFF disables `UART7` DMA and actively drives `PF6`/`PF7` to **`0 V` LOW** (no pull-up) before cutting `PA12` (`TFT_PWR_EN`), preventing ESD back-powering into `U24` / ST7735S.
-  - Pressing `Fn + F4` again performs a clean cold power-on reset, re-probes `U24`, redraws the full HUD cleanly, and re-asserts your saved `TFT` PWM brightness + `FB_DIRTY` panel flush automatically.
+- **Zero-PC Onboard Tuning**: Adjust Hall actuation (`ACT`), Rapid Trigger (`RT`), all 4 SOCD modes (`OFF/LAST/NEUT/FIRST`), Macro playback speed & direct macro trigger (`KEYS`), Deep Energy Save timeout (`POWER → ECO`), 7 selectable Screensavers (`POWER → SAVR`), wireless poll rate (`RATE`), 12h/24h clock (`CLK`), RGB speed (`SYSTEM → SPD`), OS mode (`OS`), Win Lock (`WINL`), and persistent TFT theme (`SYSTEM → SKIN`: `PIXEL / STOCK+ / TERM`) right from the rotary knob.
+- **True 0 V Hardware TFT Power-Gating (`Fn + F4` & Deep Energy Save)** ([src/tft/uart7_tft.c](../src/tft/uart7_tft.c), [src/main.c](../src/main.c)):
+  - Cutting the TFT rail disables `UART7` DMA, gates the `UART7` peripheral clock, and actively drives `PF6`/`PF7` to **`0 V` LOW** (no pull-up) before cutting `PA12` (`TFT_PWR_EN`), preventing ESD back-powering into `U24` / ST7735S.
+  - Re-enabling performs a clean cold power-on reset, re-probes `U24`, redraws the full HUD cleanly in your active theme, and re-asserts your saved `TFT` PWM brightness automatically.
 
 ---
 
@@ -204,15 +232,23 @@ Configure in VIA (**TFT & Encoder → Knob Function Mode**, `ch=7 val_id=8`) or 
 
 ---
 
-## 10. Tri-Mode Connectivity (8 kHz USB HS + 2.4 GHz + Bluetooth LE) & Battery Power Management
+## 10. Tri-Mode Connectivity, Deep Energy Save (`ECO`) & Low-Power Architecture
 
 - **High-Speed USB OTGHS (`3151:502B`)** ([src/usb/](../src/usb/)): True `8 kHz` (`0.125 ms`) HID polling with automatic BIOS Boot 6KRO ↔ OS NKRO protocol switching and zero-duplicate report suppression.
 - **2.4 GHz RF Dongle & Bluetooth LE (`BT1 / BT2 / BT3`)** ([src/rf/spi3_rf.c](../src/rf/spi3_rf.c)):
   - Full `SPI3` DMA driver talking to the onboard wireless co-MCU with TX retry queue, automatic `2.4 GHz` NKRO escalation (`> 6` keys), selectable wireless poll rate (`1000 / 500 / 250 / 125 Hz`), and **wireless VIA configuration passthrough** over 2.4 GHz / BLE!
   - Switch slots & pair live via **`Fn + Q/W/E`** (`BT1..BT3`), **`Fn + R`** (`2.4 GHz`), **`Fn + T`** (`Pair`), plus the physical debounced 3-way hardware mode switch (`PB2/PB10`).
-- **Smart Battery Telemetry & Idle Sleep** ([src/hall/mode_switches.c](../src/hall/mode_switches.c)):
-  - Live VBUS & charger status sensing (`PC13/PC14`) + hardware-calibrated RGB/TFT load-compensated `VBAT` curve (`tk75_battery_compensate_vbat`), hysteresis, glitch immunity, and CV-full `100%` confirmation (transitions cleanly from **⚡ USB Charging** to **🔌 USB Full `100%`** even while RGB/TFT stay awake, and immediately to clean **Battery mode** on unplug).
-  - Configurable battery idle sleep (`sleep_timeout_min`, default `5 min`, `0 = disabled`): cleanly shuts down RGB & TFT rails, drops Hall scan rate to ultra-low-power `200 Hz` wake-scan, puts RF co-MCU to sleep, and wakes instantaneously on any key press, knob turn, mode switch flip, or USB plug-in.
+- **Unified Deep Energy Save (`ECO`) Across USB, 2.4 GHz & Bluetooth** ([src/main.c](../src/main.c)):
+  - Configurable timeout (`sleep_timeout_min`, **default `5 min`**, presets `OFF / 1 / 2 / 5 / 10 / 15 / 30 min` via TFT **`POWER → ECO`** or VIA **`Wireless & Power → ch=9, val_id=4`**).
+  - Flushes any pending EEPROM changes, cleanly shuts down **both the 5 V WS2812B LED rail** (SPI2 MOSI quiesced to `0 V`) **and the TFT display rail** (`UART7` quiesced to `0 V` + peripheral clock gated) so lights never stay on indefinitely when you step away.
+  - In battery mode (`2.4 GHz` / `BT` unplugged), also puts the `SPI3` RF co-MCU into sleep mode and drops Hall scanning to ultra-low-power `200 Hz` wake-scan; in wired USB mode, drops scanning to `500 Hz` (`2 ms` wake latency).
+  - **Instant Wake**: Any key press, knob turn/push, mode switch toggle, USB VBUS plug-in, or VIA config edit wakes the keyboard immediately and restores RGB + TFT cleanly.
+- **Battery-First Low-Power & CPU Performance Architecture**:
+  - **Active Cortex-M4 `__WFI()` Idle Sleep**: Main loop halts the `216 MHz` core cleanly between interrupts (`TMR6`, `SysTick`, `USB`, `DMA`), waking only when a scan frame or peripheral event is ready.
+  - **Adaptive Hall Scan Cadence**: `8 kHz` (`125 µs`) USB active · `2 kHz / 1 kHz / 500 Hz` `2.4 GHz` matching RF rate · `500 Hz` Bluetooth active & wired ECO · `200 Hz` battery deep sleep (up to **40× lower ADC + Hall MUX power** when wireless/idle).
+  - **Wireless USB PHY + `PLLU` Shutdown**: Completely powers down the AT32F405 internal High-Speed USB OTGHS PHY and `PLLU` clock when running in `2.4 GHz` or Bluetooth mode.
+  - **Zero-Waste RGB & WS2812B Engine**: Cuts the 5 V RGB boost rail automatically whenever matrix RGB, sidelight, and indicators are all dark (`0%`/`OFF`), uses a 16-entry nibble-expansion LUT for `SPI2` DMA encoding, skips DMA transmit when the 90-LED frame is unchanged, and uses division-free `rgb_hsv_to_grb()` + hoisted per-frame constants.
+  - **Smart Battery Telemetry** ([src/hall/mode_switches.c](../src/hall/mode_switches.c)): Hardware-calibrated RGB/TFT load-compensated `VBAT` curve (`tk75_battery_compensate_vbat`), hysteresis, glitch immunity, and CV-full `100%` promotion (`⚡ USB Charging → 🔌 USB Full 100% → Battery`).
 
 ---
 
@@ -226,7 +262,9 @@ Configure in VIA (**TFT & Encoder → Knob Function Mode**, `ch=7 val_id=8`) or 
   - Custom `128×128` RGB565 image/logo resize & upload to `U24` flash + flash erase.
 - **Cross-Platform Python CLI Suite** ([tools/](../tools/)):
   - `tk75_dfu.py`: Validates binary headers & flash ceiling, **automatically backs up all live VIA settings, keymaps, encoders, and macros before flashing**, flashes AT32 DFU (`3151:502A`), and **automatically restores your full config** after reboot.
-  - `tk75_tft_flash.py`: Inspects `U24` firmware (`--info`), flashes patched `U24` firmware safely (~42 s), or rolls back to unmodified official GamaKay `LCD_V102` in one command.
+  - `tk75_tft_flash.py`: Inspects `U24` firmware (`--info`), flashes patched `U24` v1.4 firmware safely (~42 s), or rolls back to unmodified official GamaKay `LCD_V102` in one command.
+  - `tk75_tft_gif.py`: Converts & flashes any animated GIF/WebP/PNG (`<= 31` frames, per-frame durations preserved via `TKGF v2`) to `U9 @ 0x6C0000..0x7BFFFF` with hardware CRC32 verification, live `--preview`, `info`, `clear`, and `set-mode <off|clock|eyes|cat|matrix|dvd|gif>`.
+  - `generate_fun_gifs.py`: Procedurally generates the 5 bundled 128×128 animated GIFs in [assets/gifs/](../assets/gifs/).
   - `tk75_tft_cli.py`: `sync-clock`, `set-page <0..5>`, `upload-image <file>`, `erase-screen`.
   - `tk75_tft_draw.py`: Interactive raw `UART7` drawing/testing CLI over VIA bridge (`ch=8 val_id=7`).
   - `render_feature_gifs.py` + `sim_fb_bridge.c`: Reproducibly regenerates all 8 documentation GIFs straight from the C firmware sources.
@@ -237,7 +275,7 @@ Configure in VIA (**TFT & Encoder → Knob Function Mode**, `ch=7 val_id=8`) or 
 
 | Shortcut | Function | Keycode |
 |----------|----------|---------|
-| **`Fn + Knob Push`** | Open / exit 6-page Pixel-Art TFT Menu (returns to Volume mode) | `KC_ENC_MODE_NEXT` (`0x7E07`) |
+| **`Fn + Knob Push`** | Open / exit 7-page Multi-Theme TFT Menu (returns to Volume mode) | `KC_ENC_MODE_NEXT` (`0x7E07`) |
 | **`Fn + Knob Turn`** | RGB Brightness `- / +` (when encoder is in Mode 0) | `RGB_VAD / RGB_VAI` |
 | **`Fn + F4`** | Toggle TFT Display Power rail ON / OFF (`0 V` cold-POR + PWM restore) | `KC_TFT_TOG` (`0x7E06`) |
 | **`Fn + F5`** / **`Fn + PgUp`** / **`Fn + PgDn`** / **`Fn + Space`** | TFT Menu `Next / Prev / OK` without using knob | `0x7E00 / 0x7E0E / 0x7E0F` |
@@ -274,22 +312,27 @@ Configure in VIA (**TFT & Encoder → Knob Function Mode**, `ch=7 val_id=8`) or 
 | **6 (Sidelight)** | `6..7` | Caps Lock Key White/Amber Indicator (`LED #57`), Per-Key RGB Master | `0/1`, `0/1` |
 | **6 (Sidelight)** | `8..9` | **Caps Lock Accent Bar Trigger** (`0/1`), **Caps Lock Effect** (`0..4`) | `Solid / Breath / Wave / Blink / Scan` |
 | **7 (TFT & Knob)** | `1..4` | TFT Power (`0/1`), Stock Page (`0..5`), Backlight (`0..100%`), Sleep Timeout (`0..3`) | Persisted in EEPROM |
-| **7 (TFT & Knob)** | `5..9` | 24h Clock, WPM Enable, HE Bar Enable, Knob Mode (`0..3`), **Idle Screensaver (`0/1`)** | `0/1`, `0..3`, `0/1` |
+| **7 (TFT & Knob)** | `5..9` | 24h Clock, WPM Enable, HE Bar Enable, Knob Mode (`0..3`), **Idle Screensaver (`0..6`)** | `Off / Clock / Eyes / Cat / Matrix / DVD / Custom GIF` |
+| **7 (TFT & Knob)** | `10` | **TFT Menu Theme / Skin** | `0=Pixel Cyber`, `1=Stock+ Classic`, `2=Phosphor Terminal` |
 | **8 (Extended)** | `1..7` | Per-Key Hall Override, RTC Clock Sync, TFT Image Upload, Live 90-Slot Stream, Erase TFT, Diagnostics, Raw UART7 Bridge | WebHID & CLI protocol |
-| **9 (Wireless)** | `1..4` | BT Slot (`0..2`), RF Poll Rate (`1000..125 Hz`), macOS Mode (`0/1`), Battery Sleep Timeout (`min`) | Tri-mode RF & power |
+| **9 (Wireless & Power)** | `1..5` | BT Slot (`0..2`), RF Poll Rate (`1000..125 Hz`), macOS Mode (`0/1`), **Deep Energy Save (`0..30 min`)**, RF Pair | Tri-mode RF & unified RGB+TFT ECO power |
 
 ---
 
-## 14. Patched `U24` Co-Processor v1.2, Flash Layout & Unbrickable Recovery
+## 14. Patched `U24` Co-Processor v1.4, Flash Layout & Unbrickable Recovery
 
 - **AT32F405 Flash Map**:
   - `0x08000000 .. 0x08004FFF` — Factory DFU Bootloader (`3151:502A`, **never touched**, hold `Esc` on USB plug-in to recover from anything)
-  - `0x08005000 .. 0x08025FFF` — Open VIA Application Firmware (~`89 KB` / `132 KB` used, ~`66%`)
+  - `0x08005000 .. 0x08025FFF` — Open VIA Application Firmware (~`102.5 KB` / `132 KB` used, `75.9%`)
   - `0x08032000 .. 0x08033FFF` — Factory per-switch Hall calibration table (**read-only, untouched**)
   - `0x0803C000 .. 0x0803FFFF` — 4-slot circular wear-leveled IEEE CRC32 EEPROM (`4 × 4 KB` slots / 16 KB, `2 KB` macro pool, zero flash wear on idle)
-- **`U24` (`YC3123-Q`) Hybrid Patch v1.2** ([docs/TFT_PROTOCOL.md](TFT_PROTOCOL.md), [tools/tft_patch/](../tools/tft_patch/)):
-  - Adds custom UART7 commands `0x20..0x26` (manual HUD takeover, rect fill, blit, scaled ROM `6×12` text, smooth non-flushing `0..100%` PWM, patch version probe, atomic 15-rect batching), centers `RASET` to `1..128`, and clears full `132×132` ST7735S GRAM edges on takeover.
-  - Preserves stock init, watchdog, stock UI (`SYSTEM → UI: STOCK`), and `cmd=0x3F` DFU bootloader entry for instant 1-command rollback:
+- **`U9` (`ZB25VQ64` 8 MB SPI NOR) Custom GIF Partition**:
+  - `0x006C0000 .. 0x007BFFFF` (`1.0 MB` = `32 × 32 KB` blocks, hardware-enforced bounds inside `u24_patch.c` — isolated from stock vendor assets `<=0x404000`, U24 config `0x100000`, and stock tail `0x7D1000`):
+    - Block 0 (`0x6C0000`): 94-byte `TKGF v2` header (magic, version, frame count `1..31`, default delay, CRC32, ASCII name, and `31 × uint16_t` per-frame delays in ms).
+    - Blocks 1..31 (`0x6C8000 + idx * 0x8000`): Raw `128×128` column-major big-endian RGB565 frames (`32 KB` each) DMA-loaded straight into `FB_BASE_ADDR`.
+- **`U24` (`YC3123-Q`) Hybrid Patch v1.4** ([docs/TFT_PROTOCOL.md](TFT_PROTOCOL.md), [tools/tft_patch/](../tools/tft_patch/)):
+  - Adds custom UART7 commands `0x20..0x26` (manual HUD takeover, rect fill, blit, scaled ROM `6×12` text, smooth non-flushing `0..100%` PWM, patch version probe, atomic 15-rect batching), `0x28` (bounds-checked `U9` GIF flasher + hardware CRC32), and `0x29` (`TKGF v1/v2` GIF query & DMA frame player with per-frame delay ACK), centers `RASET` to `1..128`, and clears full `132×132` ST7735S GRAM edges on takeover.
+  - Preserves stock init, watchdog, and `cmd=0x3F` DFU bootloader entry for instant 1-command rollback:
     ```bash
     .venv/bin/python tools/tk75_tft_flash.py --flash backups/stock_u24_lcd_v102_x5.bin
     ```

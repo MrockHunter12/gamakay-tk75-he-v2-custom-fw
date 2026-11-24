@@ -401,12 +401,28 @@ To enable full tear-free RAM framebuffer rendering without touching stock `U24` 
 | `0x22` | `[x, y, w, h, flags, px...]` | Blit raw big-endian RGB565 pixels (bit0: column-major, bit1: flush) |
 | `0x23` | `[x, y, fg_hi, fg_lo, bg_hi, bg_lo, flags, ascii...]` | Draw ASCII string using stock ROM 6×12 font (`0x01016D3A`); `flags[1:0]` = scale `1..3`, bit6 = transparent bg, bit7 = flush |
 | `0x24` | `[pct, 1]` / `[0..4]` / `[0xFF]` | `[pct, 1]`: smooth `0..100%` backlight PWM (`pct * 300`, max `30000`, no LCD flush); `[0..4]`: stock PWM table; `[0xFF]`: flush framebuffer only |
-| `0x25` | *(empty)* | Returns patch version reply `cmd=0xA5`, payload `[status=0x00, major=0x01, minor=0x02]` |
+| `0x25` | *(empty)* | Returns patch version reply `cmd=0xA5`, payload `[status=0x00, major=0x01, minor=0x04]` |
 | `0x26` | `[flags, count, (x, y, w, h, hi, lo) * count]` | Atomic multi-rectangle fill batch (up to 15 rects/packet); bit0 of `flags` triggers `FB_DIRTY` |
+| `0x28` | `[op, addr_le24, ...]` | Safe `U9` (`ZB25VQ64`) GIF flasher strictly locked to `0x006C0000..0x007BFFFF` (reply `0xA8`): `op=0` erase 32 KB block; `op=1` page-program `1..88 B` (no 256 B page crossing); `op=2` read `1..16 B`; `op=3` compute IEEE CRC32 over `[addr, addr+len_le32)` |
+| `0x29` | `[op, (frame_idx)]` | `U9` Custom Animated GIF player (reply `0xA9`): `op=0` reads `TKGF` v1/v2 header @ `0x006C0000`, caches per-frame delays in SRAM (`0x00036200`), returns `[0x00, valid, frame_count, d0_lo, d0_hi]`; `op=1` DMA-reads frame `frame_idx` (`0x6C8000 + idx*0x8000`, 32 KB) into `FB_BASE_ADDR`, sets `FB_DIRTY=1`, and returns `[0x00, idx, delay_lo, delay_hi]` |
+
+### `U9` `TKGF` v2 Custom Animated GIF Format (`0x006C0000 .. 0x007BFFFF`)
+
+- **Block 0 (`0x006C0000`, 94-byte header)**:
+  - `[0..3]`: Magic `"TKGF"`
+  - `[4]`: Version (`1` = uniform `delay_ms`; `2` = per-frame `frame_delays_ms[31]`)
+  - `[5]`: `frame_count` (`1..31`)
+  - `[6..7]`: `delay_ms` LE16 default/frame-0 interval (`33..10000 ms`)
+  - `[8..11]`: `data_crc32` LE32 IEEE CRC32 over `frame_count * 32768` bytes
+  - `[12..15]`: Reserved (`0`)
+  - `[16..31]`: NUL-padded ASCII label (up to 15 chars)
+  - `[32..93]`: `frame_delays_ms[31]` LE16 per-frame hold durations (`33..10000 ms`, v2)
+- **Blocks 1..31 (`0x006C8000 + idx * 0x8000`)**: Raw 32,768-byte `128×128` column-major big-endian RGB565 frames matching `FB_BASE_ADDR` (`0x0002A54C`) directly for zero-conversion DMA playback.
 
 ### Host & Firmware Integration
 
 - **VIA Raw UART7 Bridge**: `ch=8, val_id=7` (`op=0` pause/resume HUD, `op=1` stage chunk, `op=2` inline send, `op=3` stage+send, GET returns last RX frame).
 - **Flasher CLI**: `.venv/bin/python tools/tk75_tft_flash.py --info | --flash <bin> [--dry-run]`
+- **Custom GIF CLI**: `.venv/bin/python tools/tk75_tft_gif.py upload <file.gif> [--preview 6] | info | preview | set-mode <mode> | clear`
 - **Live Draw CLI**: `.venv/bin/python tools/tk75_tft_draw.py demo | text | fill | image | brightness | stock`
-- **Onboard Pixel HUD**: [src/tft/pixel_hud.c](../src/tft/pixel_hud.c) auto-probes `0x25` every `100 ms` at boot, activates automatically on `0xA5` reply, and falls back to stock `hud_engine` after `900 ms` if running unmodified stock `U24`.
+- **Onboard Multi-Theme HUD**: [src/tft/pixel_hud.c](../src/tft/pixel_hud.c) auto-probes `0x25` every `100 ms` at boot, activates automatically on `0xA5` reply, renders all 7 pages across 3 persistent skins (`PIXEL`, `STOCK+`, `TERM`) plus 6 idle screensavers (`CLOCK`, `EYES`, `CAT`, `MATRIX`, `DVD`, `GIF`), and falls back to stock `hud_engine` after `900 ms` if running unmodified stock `U24`.

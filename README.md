@@ -27,14 +27,14 @@ Native open-source C11 + TinyUSB **custom firmware** for the **GamaKay TK75 HE V
 | Category | Features Included | Live Demo & Docs |
 |----------|-------------------|------------------|
 | **8 kHz Hall-Effect Engine** | `0.10..3.90 mm` global & **per-key** actuation, release hysteresis, **Rapid Trigger** & Continuous RT (`Fn+1`), **SOCD / Snap Tap** (`Fn+2`, 4 modes × 3 presets), anti-jitter adaptive EMA & **real-time ratiometric supply-rail tracking** (zero false drop on USB unplug / RGB load) | [Guide & GIF](docs/FEATURES.md#1-8-khz-hall-effect-engine-rapid-trigger-socd--per-key-overrides) |
-| **6-Page Pixel-Art TFT Menu** | `Fn + Knob Push`: **Home** (live animated switch, WPM, **3-state ⚡/🔌/Battery power icon** + load-compensated `100%` CV-full gauge, mode/layer), **Brightness** (`TFT` 0..100% smooth PWM, `RGB`, `SID`, `CAP`), **Lighting** (`FX / COL / SFX / SCOL` + live RGB565 swatches), **Hall Switch**, **Macro**, **System** (`SPD / OS / SAVR / PIXEL↔STOCK`), plus clean 0 V `Fn+F4` TFT power-gating | [Guide & GIFs](docs/FEATURES.md#2-6-page-onboard-pixel-art-tft-menu-brightness-colors--lighting-effects) |
+| **7-Page Multi-Theme TFT Menu** | `Fn + Knob Push` (instant zero-animation switches) with **3 full-featured persistent skins** (`PIXEL` Cyber, modified `STOCK+` Classic with hero clock + all custom features, `TERM` Phosphor CRT; VIA `ch=7 val_id=10`): **Home**, **Brightness** (`TFT/RGB/SID/CAP`), **Lighting** (`FX/COL/SFX/SCOL` + live swatches), **Hall Switch** (`ACT/RT/SOCD 4-mode/CAL`), **Macro**, **Power** (`ECO/SAVR/RATE/CLK`), **System** (`SPD/OS/WINL/SKIN`) | [Guide & GIFs](docs/FEATURES.md#2-7-page-multi-theme-onboard-tft-menu-pixel-stock--term) |
 | **Caps Lock → Vertical 8-LED Bar** | Independently configurable trigger (`ON/OFF`, `ch=6 val_id=8` / TFT `BRIGHTNESS → CAP`) with 5 selectable effects (`Solid`, `Breathing`, `Rainbow Wave`, `Alert Blink`, `KITT Scanner`, `ch=6 val_id=9`) on the vertical internal diffuser bar (`LEDs 82..89`) — powers 5 V LED rail ON even when normal `SID` & `RGB` are OFF; separate Caps key indicator (`LED #57`) & Win-Lock indicator (`LED #80`) | [Guide & GIF](docs/FEATURES.md#3-caps-lock--vertical-8-led-accent-bar-trigger--selectable-effects) |
 | **Xtrfy K5 Macro Recorder & TFT Text Editor** | **`2 KB` macro pool** (`16` slots, up to `341` recorded events / `~2,032` VIA chars): hold **`Fn + C/V/B/N/M`** (`1.8 s`) → **fullscreen cassette deck** → type keys/chords (host HID suppressed) → tap **`Fn`** to open the **onboard 5×19 German ISO TFT Text Editor** (`←/→/↑/↓`, `Home/End`, knob scrub, `Bksp/Del`, live typing/combos, `#POS` inspector) → **`2nd Fn`** confirms & saves (`Knob Push` cancels; immediate save when TFT is off); **live per-key typing glow** & 5 speed presets (`Fn + ,/.`) | [Guide & GIF](docs/FEATURES.md#4-xtrfy-k5-style-onboard-macro-recorder-via-bytecode-speed-control--live-typing-glow) |
 | **Onboard 82-Key Hall Calibration** | Launch TFT **`HALL SWITCH → CAL START`** → host input paused, uncalibrated keys glow **blue**, pressed key **cyan-white**, calibrated keys **mint green**; giant TFT keycap + live `FORCE` bar + `done/82` progress; auto-finishes & persists exact per-key spans (97% margin → every key reaches `4.0 mm`); knob push aborts cleanly | [Guide & GIF](docs/FEATURES.md#5-interactive-onboard-82-key-hall-switch-calibration) |
-| **Zero-Software Idle Screensaver** | Activates after 30 s idle on Win/Mac/Linux with zero host app: night sky + crescent moon + twinkling stars + 2× clock (`CLK`/`UP`, ticks even while TFT off) + clean 6-px seconds bar + 3-state ⚡/🔌/Battery gauge + `USB 8K / 2.4 1K / BT1..3`, `WIN/MAC L0..3`, Hall `ACT/RT`, Peak WPM, locks & session keystrokes; wakes instantly on keypress; toggleable in TFT `SYSTEM → SAVR` & VIA `ch=7 val_id=9` | [Guide & GIF](docs/FEATURES.md#6-zero-software-pixel-art-idle-screensaver--instant-wake) |
+| **7 Selectable Idle Screensavers & Custom Animated GIFs** | Activates after 30 s idle with zero host software; switchable in TFT `POWER → SAVR` & VIA `ch=7 val_id=9`: `OFF`, `CLOCK` (clock + system telemetry), `EYES` (smooth 17 FPS moving/side-eye/blinking cartoon eyes on pitch black), `CAT` (Bongo Cat), `MATRIX` rain, `DVD` bouncing `TK75`, and **`GIF`** (native 128×128 16-bit animated GIFs in `U9` flash with per-frame timing via `U24 v1.4` + 5 bundled fun GIFs in [assets/gifs/](assets/gifs/)); wakes instantly on any key | [Guide & GIFs](docs/FEATURES.md#6-selectable-idle-screensavers--custom-u9-animated-gifs) |
 | **Per-Layer & Matrix RGB** | 7 matrix effects (`Off`, `Wave`, `Solid`, `Breath`, `Hall Depth`, `Reactive Heat`, `Layer Map`); **Layer 1 (`Fn`)** dims unbound keys to `25%` + guaranteed high-contrast **120° color-wheel triad** (`+120°` Fn / `+240°` saved macros; Vivid Orange + Emerald Green on white/pastel; White + Emerald Green on Rainbow Wave); **Layer 2 (`macOS`)** 180° complement; **Layer 3 (`Custom`)** triadic complement; auto-suppressed when RGB off / `0%` | [Guide & GIF](docs/FEATURES.md#7-per-layer-rgb-indicators--matrix-lighting-effects) |
 | **4-Mode Rotary Knob** | Switchable via VIA (`ch=7 val_id=8`) or `Fn + Knob Push`: `0` Volume/VIA Keymap, `1` TFT HUD Menu, `2` RGB Brightness/Toggle, `3` Live Actuation (`±0.05 mm`) & RT Toggle | [Guide](docs/FEATURES.md#9-4-mode-cnc-rotary-knob--per-layer-encoder-bindings) |
-| **Tri-Mode USB + 2.4 GHz + BLE** | `8 kHz` High-Speed USB OTGHS (BIOS 6KRO + OS NKRO), `SPI3` DMA RF co-MCU (`2.4 GHz` auto-NKRO `1000..125 Hz`, `BT1..BT3`, wireless VIA passthrough), hardware mode slider, VBUS/charger gauge, configurable idle battery sleep (`200 Hz` wake scan + rail gating) | [Guide](docs/FEATURES.md#10-tri-mode-connectivity-8-khz-usb-hs--24-ghz--bluetooth-le--battery-power-management) |
+| **Tri-Mode, Deep Energy Save (`ECO`) & Low-Power Engine** | `8 kHz` USB HS + `2.4 GHz` + `BT1..BT3`; unified **Deep Energy Save** (default `5 min`, `0..30 min` in TFT `POWER → ECO` / VIA `ch=9 val_id=4`) powers down RGB 5 V + TFT 0 V rails across wired & wireless modes and wakes instantly on typing; CPU `__WFI()` idle sleep, adaptive Hall scan scaling (`8 kHz → 500 Hz → 200 Hz`), wireless USB PHY+PLLU shutdown, dark RGB rail cut, WS2812 LUT + dirty-frame skip | [Guide](docs/FEATURES.md#10-tri-mode-connectivity-deep-energy-save-eco--low-power-architecture) |
 | **VIA v12, WebHID & Safe Recovery** | Full 4-layer ISO/ANSI VIA JSON, `2 KB` macro pool (16 slots), browser WebHID companion (live 90-slot travel visualizer, per-key Hall overrides, RTC sync, custom TFT image upload), auto-backup/restore DFU flasher, unerasable factory bootloader (`Esc` on plug-in), untouched factory cal (`0x08032000+`), 4-slot CRC32 EEPROM (`0x0803C000+`), 1-command `U24` stock rollback | [Guide](docs/FEATURES.md#11-native-via-v12-webhid-companion--cli-tooling) |
 
 ---
@@ -50,11 +50,12 @@ Native open-source C11 + TinyUSB **custom firmware** for the **GamaKay TK75 HE V
 | [src/via/](src/via/) | VIA v12 handler, custom channels `2 / 3 / 5 / 6 / 7 / 8 / 9`, & raw `UART7` TFT bridge (`ch=8, val_id=7`) |
 | [src/rf/](src/rf/) | `SPI3` DMA co-MCU driver (`2.4 GHz` dongle + `BT1..BT3`), retry buffer, sleep/wake & wireless VIA forwarding |
 | [src/rgb/](src/rgb/) | Non-blocking `SPI2` DMA WS2812B driver (`PA10`, `PB13` enable), 90-LED effects, per-layer overlays, macro glow & Caps Lock vertical bar engine |
-| [src/tft/](src/tft/) | `UART7` DMA frame codec (`0x55` TX / `'D'` RX @ `921600`) with 0 V power-gating, stock HUD sync engine, & onboard 6-page Pixel-Art HUD (`pixel_hud.c`) |
+| [src/tft/](src/tft/) | `UART7` DMA frame codec (`0x55` TX / `'D'` RX @ `921600`) with 0 V power-gating, stock HUD sync engine, & onboard 7-page multi-theme HUD + 6 screensavers (`pixel_hud.c`) |
 | [src/usb/](src/usb/) | TinyUSB OTGHS descriptors (`3151:502B`) & HID report endpoints |
 | [via/](via/) | VIA V3 draft definition JSON ([tk75hev2_optionb_via.json](via/tk75hev2_optionb_via.json)) |
-| [tools/](tools/) | AT32 DFU flasher (`tk75_dfu.py`), `U24` TFT flasher (`tk75_tft_flash.py`), live TFT draw CLI, `U24` hybrid patch (`tools/tft_patch/`), WebHID companion, firmware-accurate GIF renderer (`render_feature_gifs.py`) |
-| [docs/](docs/) | Complete illustrated feature guide ([docs/FEATURES.md](docs/FEATURES.md)), 8 live demo GIFs ([docs/assets/](docs/assets/)), and `YC3123-Q` (`U24`) TFT protocol spec ([docs/TFT_PROTOCOL.md](docs/TFT_PROTOCOL.md)) |
+| [assets/gifs/](assets/gifs/) | 5 bundled 128×128 animated screensaver GIFs (`funny_eyes.gif`, `bongo_cat.gif`, `party_parrot.gif`, `nyan_space.gif`, `coffee_afk.gif`) |
+| [tools/](tools/) | AT32 DFU flasher (`tk75_dfu.py`), `U24` TFT flasher (`tk75_tft_flash.py`), `U9` animated GIF uploader (`tk75_tft_gif.py`), GIF generator (`generate_fun_gifs.py`), live TFT draw CLI, `U24` hybrid patch (`tools/tft_patch/`), WebHID companion, firmware-accurate GIF renderer (`render_feature_gifs.py`) |
+| [docs/](docs/) | Complete illustrated feature guide ([docs/FEATURES.md](docs/FEATURES.md)), live demo GIFs ([docs/assets/](docs/assets/)), and `YC3123-Q` (`U24`) TFT protocol spec ([docs/TFT_PROTOCOL.md](docs/TFT_PROTOCOL.md)) |
 
 ---
 
@@ -94,10 +95,10 @@ python3 -m venv .venv
 .venv/bin/python tools/tk75_dfu.py --flash build/tk75_he_v2_via.bin
 ```
 
-### 5. Build & Flash Custom `U24` TFT Patch (Enables Pixel-Art HUD)
+### 5. Build & Flash Custom `U24` TFT Patch v1.4 (Enables Multi-Theme HUD + Custom `U9` GIFs)
 
 ```bash
-# Build hybrid patch v1.2 on top of official stock LCD_V102 backup
+# Build hybrid patch v1.4 on top of official stock LCD_V102 backup
 .venv/bin/python tools/tft_patch/build_patched_u24.py
 
 # Inspect current U24 firmware version (read-only)
@@ -108,6 +109,21 @@ python3 -m venv .venv
 
 # Roll back to unmodified official GamaKay LCD_V102 at any time:
 .venv/bin/python tools/tk75_tft_flash.py --flash backups/stock_u24_lcd_v102_x5.bin
+```
+
+### 6. Upload Custom Animated GIFs & Switch Screensavers (`U24` v1.4+)
+
+```bash
+# Upload any animated GIF/WebP/PNG (<=31 frames, per-frame timing preserved!) to U9 & preview live
+.venv/bin/python tools/tk75_tft_gif.py upload assets/gifs/funny_eyes.gif --preview 8
+.venv/bin/python tools/tk75_tft_gif.py upload assets/gifs/bongo_cat.gif --preview 5
+.venv/bin/python tools/tk75_tft_gif.py upload my_custom.gif --fps 10 --preview 5
+
+# Inspect currently stored U9 GIF, preview immediately, clear, or switch screensaver mode
+.venv/bin/python tools/tk75_tft_gif.py info
+.venv/bin/python tools/tk75_tft_gif.py preview --seconds 6
+.venv/bin/python tools/tk75_tft_gif.py set-mode eyes   # off|clock|eyes|cat|matrix|dvd|gif
+.venv/bin/python tools/tk75_tft_gif.py clear
 ```
 
 > **Unbrick Recovery:** Hold **Esc** while plugging in USB to force entry into the unerasable factory DFU bootloader (`3151:502A`). Then run `--flash` or `--restore <stock_plain_from_0x5000.bin>`.
