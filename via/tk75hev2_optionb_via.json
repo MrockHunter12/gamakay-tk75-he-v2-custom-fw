@@ -219,7 +219,20 @@
             { "label": "24-Hour Clock", "type": "toggle", "content": ["id_tk75_tft_24h", 7, 5] },
             { "label": "Live WPM Counter", "type": "toggle", "content": ["id_tk75_tft_wpm", 7, 6] },
             { "label": "Live Hall Travel Telemetry", "type": "toggle", "content": ["id_tk75_tft_he", 7, 7] },
-            { "label": "Idle Pixel Screensaver (Clock & Sys)", "type": "toggle", "content": ["id_tk75_tft_saver", 7, 9] },
+            {
+              "label": "Idle Screensaver Frame / GIF",
+              "type": "dropdown",
+              "options": [
+                ["0: Off", 0],
+                ["1: Clock & Sys Info", 1],
+                ["2: Funny Eyes (Built-in)", 2],
+                ["3: Bongo Cat (Built-in)", 3],
+                ["4: Matrix Rain (Built-in)", 4],
+                ["5: Bouncing TK75 DVD (Built-in)", 5],
+                ["6: Custom Animated GIF (U9 Flash)", 6]
+              ],
+              "content": ["id_tk75_tft_saver", 7, 9]
+            },
             {
               "label": "TFT Menu Theme / Skin",
               "type": "dropdown",

@@ -1668,20 +1668,26 @@ static int test_pixel_hud(void)
   }
   CHECK(!px.screensaver_active);
 
-  /* VIA ch=7 val_id=9 toggles tft_screensaver cleanly */
+  /* VIA ch=7 val_id=9 cycles & clamps all 7 tft_screensaver modes (OFF..GIF) */
   via_context_t via_sv;
   memset(&via_sv, 0, sizeof(via_sv));
   via_sv.cfg = &cfg;
   uint8_t sv_req[VIA_RAW_EPSIZE] = { 0x07U, 7U, 9U, 0U };
   uint8_t sv_rep[VIA_RAW_EPSIZE] = { 0 };
+  for (uint8_t sm = 0U; sm < (uint8_t)TFT_SAVER_COUNT; sm++) {
+    sv_req[0] = 0x07U; sv_req[3] = sm;
+    via_process_packet(&via_sv, sv_req, sv_rep);
+    CHECK(cfg.tft_screensaver == sm);
+    sv_req[0] = 0x08U;
+    via_process_packet(&via_sv, sv_req, sv_rep);
+    CHECK(sv_rep[3] == sm);
+  }
+  sv_req[0] = 0x07U; sv_req[3] = 99U; /* Out-of-range clamps cleanly to OFF (0) */
   via_process_packet(&via_sv, sv_req, sv_rep);
-  CHECK(cfg.tft_screensaver == 0U);
-  sv_req[0] = 0x08U;
+  CHECK(cfg.tft_screensaver == (uint8_t)TFT_SAVER_OFF);
+  sv_req[0] = 0x07U; sv_req[3] = (uint8_t)TFT_SAVER_CLOCK;
   via_process_packet(&via_sv, sv_req, sv_rep);
-  CHECK(sv_rep[3] == 0U);
-  sv_req[0] = 0x07U; sv_req[3] = 1U;
-  via_process_packet(&via_sv, sv_req, sv_rep);
-  CHECK(cfg.tft_screensaver == 1U);
+  CHECK(cfg.tft_screensaver == (uint8_t)TFT_SAVER_CLOCK);
 
   /* Open menu -> Brightness page row 1 (TFT), edit down by 10% */
   pixel_hud_open_menu(&px, 1200U);
@@ -1777,8 +1783,22 @@ static int test_pixel_hud(void)
   CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1849U));
   CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1850U)); /* row 2: SAVR */
   CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1851U));
-  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1852U));  /* toggle SAVR OFF */
-  CHECK(cfg.tft_screensaver == 0U);
+  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1852U));  /* CLOCK -> EYES */
+  CHECK(cfg.tft_screensaver == (uint8_t)TFT_SAVER_EYES);
+  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1852U));  /* EYES -> CAT */
+  CHECK(cfg.tft_screensaver == (uint8_t)TFT_SAVER_CAT);
+  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1852U));  /* CAT -> MATRIX */
+  CHECK(cfg.tft_screensaver == (uint8_t)TFT_SAVER_MATRIX);
+  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1852U));  /* MATRIX -> DVD */
+  CHECK(cfg.tft_screensaver == (uint8_t)TFT_SAVER_DVD);
+  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1852U));  /* DVD -> GIF */
+  CHECK(cfg.tft_screensaver == (uint8_t)TFT_SAVER_GIF);
+  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1852U));  /* GIF -> OFF wrap */
+  CHECK(cfg.tft_screensaver == (uint8_t)TFT_SAVER_OFF);
+  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_PREV, 1852U));  /* OFF -> GIF reverse wrap */
+  CHECK(cfg.tft_screensaver == (uint8_t)TFT_SAVER_GIF);
+  CHECK(pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1852U));  /* GIF -> OFF */
+  CHECK(cfg.tft_screensaver == (uint8_t)TFT_SAVER_OFF);
   CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1853U));
   CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_NEXT, 1854U)); /* row 3: RATE */
   CHECK(!pixel_hud_input(&px, HUD_MENU_ACT_OK, 1855U));
@@ -2541,22 +2561,75 @@ static int test_themes_and_energy_save(void)
     }
     CHECK(px.q_count == 0U && px.applied_theme == th);
 
-    /* Screensaver render in theme */
-    cfg.tft_screensaver = 1U;
-    live.any_actuated = false; live.idle_ms = 35000U;
-    pixel_hud_set_live(&px, &live);
-    for (uint32_t k = 0U; k < 40U; k++, now += 20U) {
-      pixel_hud_tick(&px, now);
-      pixel_hud_on_rx(&px, &ack);
+    /* Screensaver render across all modes (CLOCK, EYES, CAT, MATRIX, DVD, GIF) in theme */
+    for (uint8_t sm = (uint8_t)TFT_SAVER_CLOCK; sm < (uint8_t)TFT_SAVER_COUNT; sm++) {
+      cfg.tft_screensaver = sm;
+      live.any_actuated = false; live.idle_ms = 35000U;
+      pixel_hud_set_live(&px, &live);
+      for (uint32_t k = 0U; k < 20U; k++, now += 110U) {
+        rec.count = 0U;
+        pixel_hud_tick(&px, now);
+        pixel_hud_on_rx(&px, &ack);
+        if (rec.count > 0U && rec.cmds[0] == PIXEL_HUD_CMD_BATCH_RECT) {
+          uint8_t cnt = rec.last_payload[1];
+          CHECK(cnt <= 15U);
+          for (uint8_t i = 0U; i < cnt; i++) {
+            CHECK(rec.last_payload[2U + i * 6U] < 128U);
+            CHECK(rec.last_payload[2U + i * 6U + 1U] < 128U);
+          }
+        }
+      }
+      CHECK(px.screensaver_active && px.saver_mode_rendered == sm);
     }
-    CHECK(px.screensaver_active && px.q_count == 0U);
     live.idle_ms = 0U; live.any_actuated = true;
     pixel_hud_set_live(&px, &live);
-    for (uint32_t k = 0U; k < 40U; k++, now += 5U) {
+    for (uint32_t k = 0U; k < 50U; k++, now += 5U) {
       pixel_hud_tick(&px, now);
       pixel_hud_on_rx(&px, &ack);
     }
     CHECK(!px.screensaver_active);
+  }
+
+  /* 2b. Verify U24 v1.3 cmd=0x29 U9 GIF query + frame pacing + fallback when U9 empty */
+  {
+    pixel_hud_t px_gif;
+    tk75_persist_cfg_t gcfg;
+    tk75_cfg_set_defaults(&gcfg);
+    gcfg.tft_screensaver = (uint8_t)TFT_SAVER_GIF;
+    tx_rec_t grec;
+    memset(&grec, 0, sizeof(grec));
+    pixel_hud_init(&px_gif, &gcfg, record_tx, &grec);
+    uart7_rx_frame_t ver13 = { .cmd = 0xA5U, .payload_len = 3U, .payload = { 0x00U, 1U, 3U } };
+    pixel_hud_on_rx(&px_gif, &ver13);
+    for (uint32_t t = 10U; t < 2400U; t += 10U) {
+      pixel_hud_tick(&px_gif, t);
+      pixel_hud_on_rx(&px_gif, &ack);
+    }
+    pixel_hud_live_t glive;
+    memset(&glive, 0, sizeof(glive));
+    glive.idle_ms = 35000U;
+    pixel_hud_set_live(&px_gif, &glive);
+    grec.count = 0U;
+    pixel_hud_tick(&px_gif, 2500U);
+    CHECK(px_gif.screensaver_active && grec.count == 1U && grec.cmds[0] == PIXEL_HUD_CMD_GIF_PLAY &&
+          grec.last_payload[0] == 0U);
+    /* Simulated 0xA9 reply: valid=1, frames=4, delay=120ms */
+    uart7_rx_frame_t gif_hdr_ok = { .cmd = 0xA9U, .payload_len = 5U, .payload = { 0x00U, 1U, 4U, 120U, 0U } };
+    pixel_hud_on_rx(&px_gif, &gif_hdr_ok);
+    CHECK(px_gif.u9_gif_probed && px_gif.u9_gif_valid && px_gif.u9_gif_frames == 4U && px_gif.u9_gif_delay_ms == 120U);
+
+    uint8_t frames_seen = 0U;
+    for (uint32_t t = 2510U; t <= 3100U; t += 10U) {
+      grec.count = 0U;
+      pixel_hud_tick(&px_gif, t);
+      if (grec.count > 0U && grec.cmds[0] == PIXEL_HUD_CMD_GIF_PLAY && grec.last_payload[0] == 1U) {
+        CHECK(grec.last_payload[1] == (frames_seen % 4U));
+        frames_seen++;
+        uart7_rx_frame_t f_ack = { .cmd = 0xA9U, .payload_len = 2U, .payload = { 0x00U, grec.last_payload[1] } };
+        pixel_hud_on_rx(&px_gif, &f_ack);
+      }
+    }
+    CHECK(frames_seen >= 5U);
   }
 
   /* 3. EEPROM persistence of tft_theme & sleep_timeout_min + invalid VIA theme clamp */

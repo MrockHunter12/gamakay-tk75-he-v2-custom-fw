@@ -26,6 +26,17 @@ typedef enum {
   TFT_THEME_COUNT      = 3U,
 } tft_theme_t;
 
+typedef enum {
+  TFT_SAVER_OFF    = 0U, /* Screensaver disabled */
+  TFT_SAVER_CLOCK  = 1U, /* Pixel-art idle clock & system info */
+  TFT_SAVER_EYES   = 2U, /* Funny expressive cartoon eyes on black */
+  TFT_SAVER_CAT    = 3U, /* Animated Bongo Cat slapping keys + music */
+  TFT_SAVER_MATRIX = 4U, /* Falling green phosphor Matrix rain */
+  TFT_SAVER_DVD    = 5U, /* Bouncing retro TK75 / DVD badge */
+  TFT_SAVER_GIF    = 6U, /* Custom uploaded animated GIF in U9 flash */
+  TFT_SAVER_COUNT  = 7U,
+} tft_screensaver_mode_t;
+
 typedef struct {
   uint32_t magic;
   uint32_t seq;
@@ -79,7 +90,7 @@ typedef struct {
   uint8_t  mac_mode;          /* 0=Win/Linux, 1=macOS */
   uint8_t  sleep_timeout_min; /* Deep energy-save timeout minutes: RGB+TFT off (0=disabled, default 5) */
   uint8_t  macro_speed_idx;   /* 1=FAST(2ms/0.25x), 2/0=NORM(10ms/1x), 3=MED(25ms/2x), 4=SLOW(50ms/4x), 5=SAFE(100ms/8x) */
-  uint8_t  tft_screensaver;   /* 0=Off, 1=Pixel-art idle clock & system info screensaver */
+  uint8_t  tft_screensaver;   /* tft_screensaver_mode_t: 0=Off, 1=Clock, 2=Eyes, 3=Cat, 4=Matrix, 5=DVD, 6=Custom GIF */
   uint8_t  caps_side_enabled; /* 0=Off, 1=Trigger sidelight ON while Caps Lock active */
   uint8_t  caps_side_effect;  /* 0=Solid, 1=Breathing, 2=Rainbow Wave, 3=Alert Blink, 4=Scanner */
   uint8_t  tft_theme;         /* 0=Pixel Cyber, 1=Stock+ Classic, 2=Phosphor Terminal */

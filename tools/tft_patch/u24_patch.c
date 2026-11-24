@@ -14,6 +14,17 @@
 /* Unused SRAM above stock BSS (stock BSS ends at 0x00035210, SP starts at 0x00070000) */
 #define MANUAL_MAGIC_ADDR  0x00036000UL
 #define MANUAL_MAGIC_VAL   0xCAFE5060UL
+#define U9_STAGE_BUF_ADDR  0x00036100UL /* 256 B aligned U9 staging buffer */
+
+/* Safe U9 SPI NOR region strictly dedicated to custom animated GIFs (1.0 MB = 32 x 32 KB blocks).
+ * Isolated from stock assets (<=0x404000), U24 config (0x100000), Doom WAD (0x500000..0x677FFF),
+ * and stock tail (0x7D1000). */
+#define U9_GIF_MIN_ADDR    0x006C0000UL
+#define U9_GIF_MAX_ADDR    0x007C0000UL
+#define U9_GIF_HDR_ADDR    0x006C0000UL
+#define U9_GIF_DATA_ADDR   0x006C8000UL
+#define U9_GIF_FRAME_BYTES 0x00008000UL
+#define U9_GIF_MAX_FRAMES  31U
 
 #define STOCK_SEND_ACK_VA  0x0101563DUL /* void stock_send_ack(uint8_t const *cmd_ptr) */
 #define STOCK_SET_PWM_VA   0x0101127DUL /* void stock_set_pwm(uint32_t pwm) */
@@ -22,6 +33,9 @@
 #define STOCK_LCD_CMD_VA   0x010119C1UL /* void lcd_write_cmd(uint8_t cmd) */
 #define STOCK_LCD_DAT_VA   0x010119A5UL /* void lcd_write_data(uint8_t dat) */
 #define STOCK_SPI_DMA_VA   0x010105B5UL /* void spi_dma_write(uint32_t port, uint32_t buf, uint32_t len) */
+#define STOCK_U9_ERASE32K  0x01010A05UL /* void u9_erase_32k(uint32_t addr) */
+#define STOCK_U9_PAGE_PROG 0x01010AE5UL /* void u9_page_prog(uint8_t const *src, uint32_t addr, uint32_t len) */
+#define STOCK_U9_DMA_READ  0x01010B39UL /* void u9_dma_read(uint8_t *dst, uint32_t addr, uint32_t len) */
 #define SPI_CTRL_REG       0x000F8720UL
 #define SPI_DMA_ARG0       0x000F891CUL
 
@@ -30,6 +44,18 @@ typedef void (*fn_ack_t)(uint8_t const *);
 typedef void (*fn_u32_t)(uint32_t);
 typedef void (*fn_u8_t)(uint8_t);
 typedef void (*fn_dma_t)(uint32_t, uint32_t, uint32_t);
+typedef void (*fn_u9_prog_t)(uint8_t const *, uint32_t, uint32_t);
+typedef void (*fn_u9_read_t)(uint8_t *, uint32_t, uint32_t);
+
+typedef struct {
+  uint8_t  magic[4];    /* "TKGF" */
+  uint8_t  version;     /* 1 */
+  uint8_t  frame_count; /* 1..31 */
+  uint16_t delay_ms;    /* frame interval in ms */
+  uint32_t data_crc32;
+  uint32_t reserved;
+  char     name[16];
+} u9_gif_hdr_t;
 
 void custom_cmd_hook(void);
 void custom_ui_hook(void);
@@ -117,21 +143,200 @@ static void flush_window(uint8_t r0, uint8_t r1, uint8_t c0, uint8_t c1)
   ((fn_dma_t)STOCK_SPI_DMA_VA)(SPI_DMA_ARG0, FB_BASE_ADDR, 0x8000U);
 }
 
-static void send_patch_ver(void)
+static void send_reply_frame(uint8_t ack_cmd, uint8_t const *payload, uint8_t len)
 {
   volatile uint8_t *buf = (volatile uint8_t *)ACK_BUF_ADDR;
+  if (len > 80U) {
+    len = 80U;
+  }
   buf[0] = 0x44U;
-  buf[1] = 5U;     /* len: cmd + status + major + minor + checksum slot */
-  buf[2] = 0xA5U;  /* 0x25 | 0x80 */
-  buf[3] = 0x00U;  /* status OK */
-  buf[4] = 0x01U;  /* patch major = 1 */
-  buf[5] = 0x02U;  /* patch minor = 2 (v1.2: full-GRAM edge clear + non-flushing PWM) */
+  buf[1] = (uint8_t)(len + 2U); /* cmd + payload + checksum slot */
+  buf[2] = ack_cmd;
+  for (uint32_t i = 0U; i < len; i++) {
+    buf[3U + i] = payload[i];
+  }
   uint8_t sum = 0U;
-  for (uint32_t i = 1U; i <= 5U; i++) {
+  for (uint32_t i = 1U; i <= (uint32_t)(len + 2U); i++) {
     sum = (uint8_t)(sum + buf[i]);
   }
   buf[0x53U] = sum;
   *(volatile uint8_t *)ACK_FLG_ADDR |= 1U;
+}
+
+static void u9_read_chunked(void *dst, uint32_t addr, uint32_t len)
+{
+  uint8_t *out = (uint8_t *)dst;
+  fn_u9_read_t u9_read = (fn_u9_read_t)STOCK_U9_DMA_READ;
+  while (len > 0U) {
+    uint32_t chunk = (len > 4096U) ? 4096U : len;
+    u9_read(out, addr, chunk);
+    out  += chunk;
+    addr += chunk;
+    len  -= chunk;
+  }
+}
+
+static uint32_t u9_compute_crc32(uint32_t addr, uint32_t len)
+{
+  uint8_t *buf = (uint8_t *)U9_STAGE_BUF_ADDR;
+  uint32_t crc = 0xFFFFFFFFUL;
+  while (len > 0U) {
+    uint32_t chunk = (len > 256U) ? 256U : len;
+    u9_read_chunked(buf, addr, chunk);
+    for (uint32_t i = 0U; i < chunk; i++) {
+      crc ^= (uint32_t)buf[i];
+      for (uint32_t b = 0U; b < 8U; b++) {
+        crc = (crc & 1U) ? ((crc >> 1U) ^ 0xEDB88320UL) : (crc >> 1U);
+      }
+    }
+    addr += chunk;
+    len  -= chunk;
+  }
+  return crc ^ 0xFFFFFFFFUL;
+}
+
+static void handle_u9_flash_cmd(volatile uint8_t const *p, uint16_t plen)
+{
+  if (plen < 4U) {
+    uint8_t err = 0x01U;
+    send_reply_frame(0xA8U, &err, 1U);
+    return;
+  }
+  uint8_t  op   = p[0];
+  uint32_t addr = (uint32_t)p[1] | ((uint32_t)p[2] << 8U) | ((uint32_t)p[3] << 16U);
+
+  /* Strict hardware safety guard: erase/program strictly inside GIF region [0x6C0000..0x7C0000) */
+  if (op == 0U) {
+    if (addr < U9_GIF_MIN_ADDR || (addr + 0x8000UL) > U9_GIF_MAX_ADDR || (addr & 0x7FFFUL) != 0U) {
+      uint8_t err = 0x02U;
+      send_reply_frame(0xA8U, &err, 1U);
+      return;
+    }
+    ((fn_u32_t)STOCK_U9_ERASE32K)(addr);
+    uint8_t ok = 0x00U;
+    send_reply_frame(0xA8U, &ok, 1U);
+    return;
+  }
+
+  if (op == 1U && plen > 4U) {
+    uint32_t n = (uint32_t)(plen - 4U);
+    if (n > 88U || addr < U9_GIF_MIN_ADDR || (addr + n) > U9_GIF_MAX_ADDR ||
+        ((addr & 0xFFU) + n) > 256U) {
+      uint8_t err = 0x03U;
+      send_reply_frame(0xA8U, &err, 1U);
+      return;
+    }
+    uint8_t *stage = (uint8_t *)U9_STAGE_BUF_ADDR;
+    for (uint32_t i = 0U; i < n; i++) {
+      stage[i] = p[4U + i];
+    }
+    ((fn_u9_prog_t)STOCK_U9_PAGE_PROG)(stage, addr, n);
+    uint8_t ok = 0x00U;
+    send_reply_frame(0xA8U, &ok, 1U);
+    return;
+  }
+
+  if (op == 2U && plen >= 5U) {
+    uint32_t n = p[4];
+    if (n > 16U || addr < U9_GIF_MIN_ADDR || (addr + n) > U9_GIF_MAX_ADDR) {
+      uint8_t err = 0x04U;
+      send_reply_frame(0xA8U, &err, 1U);
+      return;
+    }
+    uint8_t resp[17];
+    resp[0] = 0x00U;
+    uint8_t *stage = (uint8_t *)U9_STAGE_BUF_ADDR;
+    u9_read_chunked(stage, addr, n);
+    for (uint32_t i = 0U; i < n; i++) {
+      resp[1U + i] = stage[i];
+    }
+    send_reply_frame(0xA8U, resp, (uint8_t)(1U + n));
+    return;
+  }
+
+  if (op == 3U && plen >= 8U) {
+    uint32_t len = (uint32_t)p[4] | ((uint32_t)p[5] << 8U) |
+                   ((uint32_t)p[6] << 16U) | ((uint32_t)p[7] << 24U);
+    if (addr < U9_GIF_MIN_ADDR || addr >= U9_GIF_MAX_ADDR || len > (U9_GIF_MAX_ADDR - addr)) {
+      uint8_t err = 0x05U;
+      send_reply_frame(0xA8U, &err, 1U);
+      return;
+    }
+    uint32_t crc = u9_compute_crc32(addr, len);
+    uint8_t resp[5];
+    resp[0] = 0x00U;
+    resp[1] = (uint8_t)(crc & 0xFFU);
+    resp[2] = (uint8_t)((crc >> 8U) & 0xFFU);
+    resp[3] = (uint8_t)((crc >> 16U) & 0xFFU);
+    resp[4] = (uint8_t)((crc >> 24U) & 0xFFU);
+    send_reply_frame(0xA8U, resp, 5U);
+    return;
+  }
+
+  uint8_t err = 0xFFU;
+  send_reply_frame(0xA8U, &err, 1U);
+}
+
+static void handle_gif_play_cmd(volatile uint8_t const *p, uint16_t plen)
+{
+  if (plen < 1U) {
+    uint8_t err = 0x01U;
+    send_reply_frame(0xA9U, &err, 1U);
+    return;
+  }
+  uint8_t op = p[0];
+
+  /* op=0: Query U9 "TKGF" GIF header -> [0x00, valid, frame_count, delay_lo, delay_hi] */
+  if (op == 0U) {
+    u9_gif_hdr_t hdr;
+    u9_read_chunked(&hdr, U9_GIF_HDR_ADDR, (uint32_t)sizeof(hdr));
+    uint8_t valid = (hdr.magic[0] == 'T' && hdr.magic[1] == 'K' &&
+                     hdr.magic[2] == 'G' && hdr.magic[3] == 'F' &&
+                     hdr.version == 1U &&
+                     hdr.frame_count >= 1U && hdr.frame_count <= U9_GIF_MAX_FRAMES) ? 1U : 0U;
+    uint16_t dms = hdr.delay_ms;
+    if (dms < 33U) dms = 100U;
+    if (dms > 2000U) dms = 2000U;
+    uint8_t resp[5];
+    resp[0] = 0x00U;
+    resp[1] = valid;
+    resp[2] = valid ? hdr.frame_count : 0U;
+    resp[3] = (uint8_t)(dms & 0xFFU);
+    resp[4] = (uint8_t)((dms >> 8U) & 0xFFU);
+    send_reply_frame(0xA9U, resp, 5U);
+    return;
+  }
+
+  /* op=1: DMA-read frame p[1] from U9 straight into 128x128 framebuffer & mark dirty */
+  if (op == 1U && plen >= 2U) {
+    uint8_t idx = p[1];
+    uint8_t resp[2];
+    if (idx >= U9_GIF_MAX_FRAMES) {
+      resp[0] = 0x02U;
+      resp[1] = idx;
+      send_reply_frame(0xA9U, resp, 2U);
+      return;
+    }
+    uint32_t faddr = U9_GIF_DATA_ADDR + ((uint32_t)idx * U9_GIF_FRAME_BYTES);
+    u9_read_chunked((void *)FB_BASE_ADDR, faddr, U9_GIF_FRAME_BYTES);
+    *(volatile uint8_t *)FB_DIRTY_ADDR = 1U;
+    resp[0] = 0x00U;
+    resp[1] = idx;
+    send_reply_frame(0xA9U, resp, 2U);
+    return;
+  }
+
+  uint8_t err = 0xFFU;
+  send_reply_frame(0xA9U, &err, 1U);
+}
+
+static void send_patch_ver(void)
+{
+  uint8_t ver[3];
+  ver[0] = 0x00U;
+  ver[1] = 0x01U;
+  ver[2] = 0x03U; /* v1.3: U9 custom GIF flasher (0x28) + player (0x29) */
+  send_reply_frame(0xA5U, ver, 3U);
 }
 
 void custom_ui_hook(void)
@@ -263,6 +468,16 @@ void custom_cmd_hook(void)
       *(volatile uint8_t *)FB_DIRTY_ADDR = 1U;
     }
     ((fn_ack_t)STOCK_SEND_ACK_VA)((uint8_t const *)&rx[3]);
+    return;
+  }
+
+  if (cmd == 0x28U) {
+    handle_u9_flash_cmd(p, plen);
+    return;
+  }
+
+  if (cmd == 0x29U) {
+    handle_gif_play_cmd(p, plen);
     return;
   }
 

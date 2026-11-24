@@ -122,6 +122,19 @@ static uint8_t normalize_theme_id(uint8_t raw)
   return (raw < (uint8_t)TFT_THEME_COUNT) ? raw : (uint8_t)TFT_THEME_PIXEL;
 }
 
+static uint8_t normalize_saver_mode(uint8_t raw)
+{
+  return (raw < (uint8_t)TFT_SAVER_COUNT) ? raw : (uint8_t)TFT_SAVER_OFF;
+}
+
+static char const *saver_mode_short_name(uint8_t mode)
+{
+  static char const *const k_names[TFT_SAVER_COUNT] = {
+    "OFF   ", "CLOCK ", "EYES  ", "CAT   ", "MATRIX", "DVD   ", "GIF   ",
+  };
+  return k_names[normalize_saver_mode(mode)];
+}
+
 static hud_theme_t const *active_theme(pixel_hud_t const *hud)
 {
   uint8_t id = (hud != NULL && hud->cfg != NULL) ? normalize_theme_id(hud->cfg->tft_theme) : 0U;
@@ -1263,8 +1276,9 @@ static void render_full_page(pixel_hud_t *hud)
     fmt_eco_timeout(c->sleep_timeout_min, eco_str);
     draw_value_row_compact(hud, 1U, 22U, "ECO ", eco_str,
                            (c->sleep_timeout_min > 0U) ? th->good : th->muted);
-    draw_value_row_compact(hud, 2U, 43U, "SAVR", c->tft_screensaver ? "ON    " : "OFF   ",
-                           c->tft_screensaver ? th->accent : th->muted);
+    uint8_t smode = normalize_saver_mode(c->tft_screensaver);
+    draw_value_row_compact(hud, 2U, 43U, "SAVR", saver_mode_short_name(smode),
+                           (smode != (uint8_t)TFT_SAVER_OFF) ? th->accent : th->muted);
     draw_value_row_compact(hud, 3U, 64U, "RATE", rf_rate_short_name(c->rf_poll_rate_idx), th->warn);
     draw_value_row_compact(hud, 4U, 85U, "CLK ", c->tft_clock_24h ? "24H   " : "12H   ", th->text);
     draw_footer(hud, true);
@@ -1946,6 +1960,432 @@ static void draw_screensaver_anim(pixel_hud_t *hud, bool force_all)
   }
 }
 
+/* ---- Built-in Funny Expressive Cartoon Eyes Screensaver (Pitch Black Background) ---- */
+#define SAVER_COL_BLACK   0x0000U
+#define SAVER_COL_WHITE   0xFFFFU
+#define SAVER_COL_IRIS    0x04BFU /* Electric ocean blue-cyan pupil halo */
+#define SAVER_COL_HEART   0xF8B2U /* Vivid hot pink-crimson heart */
+#define SAVER_COL_BLUSH   0xF995U /* Rosy cartoon blush */
+#define SAVER_COL_TONGUE  0xFA6DU /* Silly derp tongue pink */
+#define SAVER_COL_GOLD    0xFFE0U /* Bright shock exclamation / corner flash */
+#define SAVER_COL_CYAN    0x3F5FU /* Electric cyan zZz / neon */
+#define SAVER_COL_MINT    0x37D3U /* Neon mint */
+#define SAVER_COL_AMBER   0xFDC6U /* Warm amber */
+#define SAVER_COL_PURPLE  0xB19FU /* Neon violet */
+#define SAVER_COL_CORAL   0xF9C9U /* Neon coral */
+
+static void batch_add_eye_sclera(rect_batch_t *b, uint8_t cx, uint8_t cy, uint16_t col)
+{
+  batch_add(b, (uint8_t)(cx - 12U), (uint8_t)(cy - 26U), 24U, 52U, col);
+  batch_add(b, (uint8_t)(cx - 17U), (uint8_t)(cy - 22U), 34U, 44U, col);
+  batch_add(b, (uint8_t)(cx - 21U), (uint8_t)(cy - 15U), 42U, 30U, col);
+}
+
+static void batch_add_eye_pupil(rect_batch_t *b, uint8_t px, uint8_t py, bool tiny)
+{
+  if (tiny) {
+    batch_add(b, (uint8_t)(px - 3U), (uint8_t)(py - 3U), 6U, 6U, SAVER_COL_BLACK);
+    batch_add(b, (uint8_t)(px - 2U), (uint8_t)(py - 2U), 2U, 2U, SAVER_COL_WHITE);
+    return;
+  }
+  batch_add(b, (uint8_t)(px - 8U), (uint8_t)(py - 9U), 16U, 18U, SAVER_COL_IRIS);
+  batch_add(b, (uint8_t)(px - 6U), (uint8_t)(py - 7U), 12U, 14U, SAVER_COL_BLACK);
+  batch_add(b, (uint8_t)(px - 4U), (uint8_t)(py - 5U), 4U, 4U, SAVER_COL_WHITE);
+  batch_add(b, (uint8_t)(px + 2U), (uint8_t)(py + 2U), 2U, 2U, SAVER_COL_WHITE);
+}
+
+static void batch_add_pixel_heart(rect_batch_t *b, uint8_t cx, uint8_t cy, bool big)
+{
+  uint8_t d = big ? 1U : 0U;
+  batch_add(b, (uint8_t)(cx - 11U - d), (uint8_t)(cy - 9U - d), (uint8_t)(9U + d), (uint8_t)(8U + d), SAVER_COL_HEART);
+  batch_add(b, (uint8_t)(cx + 2U), (uint8_t)(cy - 9U - d), (uint8_t)(9U + d), (uint8_t)(8U + d), SAVER_COL_HEART);
+  batch_add(b, (uint8_t)(cx - 13U - d), (uint8_t)(cy - 5U), (uint8_t)(26U + (d * 2U)), (uint8_t)(8U + d), SAVER_COL_HEART);
+  batch_add(b, (uint8_t)(cx - 9U - d), (uint8_t)(cy + 3U), (uint8_t)(18U + (d * 2U)), 6U, SAVER_COL_HEART);
+  batch_add(b, (uint8_t)(cx - 4U), (uint8_t)(cy + 9U), 8U, (uint8_t)(4U + d), SAVER_COL_HEART);
+}
+
+static void draw_saver_eyes_frame(pixel_hud_t *hud)
+{
+  static int8_t const k_orbit_dx[8] = { 0,  7, 10,  7,  0, -7, -10, -7 };
+  static int8_t const k_orbit_dy[8] = { -11, -8,  0,  8, 11,  8,   0, -8 };
+
+  uint16_t step = hud->saver_step % 120U;
+  uint8_t const lcx = 36U;
+  uint8_t const rcx = 92U;
+  uint8_t const cy  = 62U;
+
+  int8_t  ldx = 0, ldy = 0, rdx = 0, rdy = 0;
+  uint8_t top_lid    = 0U;
+  uint8_t bot_lid    = 0U;
+  bool    blink      = false;
+  bool    wink_right = false;
+  bool    shock      = false;
+  bool    hearts     = false;
+  bool    derp       = false;
+  bool    sleepy     = false;
+
+  if (step < 6U) {
+    /* Curious look center */
+  } else if (step < 8U) {
+    blink = true;
+  } else if (step < 16U) {
+    ldx = 10; ldy = -2; rdx = 10; rdy = -2; /* Look right */
+  } else if (step < 24U) {
+    ldx = -10; ldy = -2; rdx = -10; rdy = -2; /* Look left */
+  } else if (step < 38U) {
+    /* Suspicious squint side-eye scan */
+    top_lid = 16U;
+    bot_lid = 12U;
+    int8_t dir = (step < 31U) ? -10 : 10;
+    ldx = dir; ldy = 2; rdx = dir; rdy = 2;
+  } else if (step < 52U) {
+    /* Cross-eyed googly derp + silly pink tongue */
+    derp = true;
+    int8_t wob = ((step & 2U) != 0U) ? 1 : -1;
+    ldx = 10;  ldy = (int8_t)(6 + wob);
+    rdx = -10; rdy = (int8_t)(-6 - wob);
+  } else if (step < 62U) {
+    /* Wide-eyed shock O_O with jittering pinprick pupils */
+    shock = true;
+    int8_t jx = ((step & 1U) != 0U) ? 2 : -2;
+    int8_t jy = ((step & 2U) != 0U) ? -2 : 2;
+    ldx = jx; ldy = jy; rdx = -jx; rdy = -jy;
+  } else if (step < 74U) {
+    /* Cheeky happy wink + rosy cheeks */
+    wink_right = true;
+    ldx = 2; ldy = -2;
+    bot_lid = 8U;
+  } else if (step < 88U) {
+    /* Pulsing heart eyes */
+    hearts = true;
+  } else if (step < 104U) {
+    /* Dizzy counter-orbiting googly pupils */
+    uint8_t idx = (uint8_t)((step - 88U) & 7U);
+    ldx = k_orbit_dx[idx];
+    ldy = k_orbit_dy[idx];
+    uint8_t ridx = (uint8_t)((8U - idx) & 7U);
+    rdx = k_orbit_dx[ridx];
+    rdy = k_orbit_dy[ridx];
+  } else if (step < 118U) {
+    /* Sleepy drooping lids + floating zZz */
+    sleepy  = true;
+    top_lid = (step < 108U) ? 22U : ((step < 114U) ? 34U : 40U);
+    ldx = 0; ldy = 8; rdx = 0; rdy = 8;
+  } else {
+    /* Snap awake blink */
+    blink = (step == 118U);
+  }
+
+  /* Batch 1: Clear active animation canvas & draw rounded scleras */
+  rect_batch_t b;
+  batch_init(&b);
+  batch_add(&b, 8U, 10U, 114U, 106U, SAVER_COL_BLACK);
+  if (blink) {
+    batch_add(&b, 16U, 60U, 40U, 4U, SAVER_COL_WHITE);
+    batch_add(&b, 72U, 60U, 40U, 4U, SAVER_COL_WHITE);
+    batch_submit(hud, &b, true);
+    return;
+  }
+  batch_add_eye_sclera(&b, lcx, cy, SAVER_COL_WHITE);
+  if (!wink_right) {
+    batch_add_eye_sclera(&b, rcx, cy, SAVER_COL_WHITE);
+  } else {
+    /* Cheerful curved wink arch on right eye */
+    batch_add(&b, 73U, 58U, 12U, 4U, SAVER_COL_WHITE);
+    batch_add(&b, 83U, 54U, 18U, 4U, SAVER_COL_WHITE);
+    batch_add(&b, 99U, 58U, 12U, 4U, SAVER_COL_WHITE);
+    batch_add(&b, 16U, 92U, 14U, 5U, SAVER_COL_BLUSH);
+    batch_add(&b, 98U, 92U, 14U, 5U, SAVER_COL_BLUSH);
+  }
+  batch_submit(hud, &b, false);
+
+  /* Batch 2: Pupils or Heart Eyes */
+  batch_init(&b);
+  if (hearts) {
+    bool pulse = ((step & 2U) == 0U);
+    batch_add_pixel_heart(&b, lcx, cy, pulse);
+    batch_add_pixel_heart(&b, rcx, cy, pulse);
+    batch_add(&b, 16U, 92U, 14U, 5U, SAVER_COL_BLUSH);
+    batch_add(&b, 98U, 92U, 14U, 5U, SAVER_COL_BLUSH);
+    batch_submit(hud, &b, true);
+    return;
+  }
+
+  batch_add_eye_pupil(&b, (uint8_t)(lcx + ldx), (uint8_t)(cy + ldy), shock);
+  if (!wink_right) {
+    batch_add_eye_pupil(&b, (uint8_t)(rcx + rdx), (uint8_t)(cy + rdy), shock);
+  }
+  if (top_lid > 0U) {
+    batch_add(&b, 14U, 34U, 44U, top_lid, SAVER_COL_BLACK);
+    batch_add(&b, 70U, 34U, 44U, top_lid, SAVER_COL_BLACK);
+  }
+  if (bot_lid > 0U) {
+    batch_add(&b, 14U, (uint8_t)(90U - bot_lid), 44U, bot_lid, SAVER_COL_BLACK);
+    if (!wink_right) {
+      batch_add(&b, 70U, (uint8_t)(90U - bot_lid), 44U, bot_lid, SAVER_COL_BLACK);
+    }
+  }
+  bool has_extra = derp || shock || sleepy;
+  batch_submit(hud, &b, !has_extra);
+
+  /* Optional Batch 3 / Text: silly tongue, shock "!", or sleepy floating "zZz" */
+  if (derp) {
+    batch_init(&b);
+    batch_add(&b, 56U, 98U, 16U, 12U, SAVER_COL_TONGUE);
+    batch_add(&b, 58U, 108U, 12U, 3U, SAVER_COL_TONGUE);
+    batch_add(&b, 63U, 99U, 2U, 9U, SAVER_COL_BLACK);
+    batch_submit(hud, &b, true);
+  } else if (shock) {
+    q_text(hud, 58U, 11U, "!!", SAVER_COL_GOLD, SAVER_COL_BLACK, 1U, false, true);
+  } else if (sleepy) {
+    uint8_t zy = (uint8_t)(24U - ((step - 104U) & 7U) * 2U);
+    q_text(hud, 94U, zy, ((step & 2U) == 0U) ? "zZz" : "ZzZ",
+           SAVER_COL_CYAN, SAVER_COL_BLACK, 1U, false, true);
+  }
+}
+
+/* ---- Built-in Bongo Cat Screensaver (Pitch Black Background) ---- */
+static void draw_saver_cat_static(pixel_hud_t *hud)
+{
+  q_fill(hud, 0U, 0U, 128U, 128U, SAVER_COL_BLACK, false);
+
+  rect_batch_t b;
+  batch_init(&b);
+  /* Cozy desk surface */
+  batch_add(&b, 0U, 96U, 128U, 2U, SAVER_COL_WHITE);
+  batch_add(&b, 0U, 98U, 128U, 30U, 0x10A3U);
+  /* Cat ears (outer white + inner pink) */
+  batch_add(&b, 30U, 22U, 14U, 16U, SAVER_COL_WHITE);
+  batch_add(&b, 33U, 26U, 8U, 10U, SAVER_COL_BLUSH);
+  batch_add(&b, 84U, 22U, 14U, 16U, SAVER_COL_WHITE);
+  batch_add(&b, 87U, 26U, 8U, 10U, SAVER_COL_BLUSH);
+  /* Chunky white cat head & body */
+  batch_add(&b, 34U, 32U, 60U, 10U, SAVER_COL_WHITE);
+  batch_add(&b, 26U, 38U, 76U, 58U, SAVER_COL_WHITE);
+  /* Rosy cheeks & cute 'w' mouth */
+  batch_add(&b, 34U, 62U, 8U, 4U, SAVER_COL_BLUSH);
+  batch_add(&b, 86U, 62U, 8U, 4U, SAVER_COL_BLUSH);
+  batch_add(&b, 57U, 62U, 3U, 4U, SAVER_COL_BLACK);
+  batch_add(&b, 60U, 65U, 3U, 2U, SAVER_COL_BLACK);
+  batch_add(&b, 63U, 62U, 2U, 4U, SAVER_COL_BLACK);
+  batch_add(&b, 65U, 65U, 3U, 2U, SAVER_COL_BLACK);
+  batch_add(&b, 68U, 62U, 3U, 4U, SAVER_COL_BLACK);
+  batch_submit(hud, &b, false);
+}
+
+static void draw_saver_cat_frame(pixel_hud_t *hud)
+{
+  uint8_t phase     = (uint8_t)(hud->saver_step & 15U);
+  uint8_t beat      = phase & 3U;
+  bool    left_dn   = (beat == 0U || beat == 3U);
+  bool    right_dn  = (beat == 2U || beat == 3U);
+  bool    blink     = (phase == 14U);
+  bool    tail_flip = ((phase & 2U) != 0U);
+
+  /* Batch 1: Eyes + raised/slapped paw regions + wagging tail */
+  rect_batch_t b;
+  batch_init(&b);
+  /* Eyes */
+  batch_add(&b, 42U, 48U, 8U, 8U, SAVER_COL_WHITE);
+  batch_add(&b, 78U, 48U, 8U, 8U, SAVER_COL_WHITE);
+  if (blink) {
+    batch_add(&b, 42U, 52U, 8U, 2U, SAVER_COL_BLACK);
+    batch_add(&b, 78U, 52U, 8U, 2U, SAVER_COL_BLACK);
+  } else {
+    batch_add(&b, 43U, 49U, 6U, 7U, SAVER_COL_BLACK);
+    batch_add(&b, 44U, 50U, 2U, 2U, SAVER_COL_WHITE);
+    batch_add(&b, 79U, 49U, 6U, 7U, SAVER_COL_BLACK);
+    batch_add(&b, 80U, 50U, 2U, 2U, SAVER_COL_WHITE);
+  }
+  /* Clear raised paw & tail boxes */
+  batch_add(&b, 10U, 64U, 16U, 28U, SAVER_COL_BLACK);
+  batch_add(&b, 102U, 64U, 22U, 32U, SAVER_COL_BLACK);
+  if (!left_dn) {
+    batch_add(&b, 12U, 68U, 14U, 12U, SAVER_COL_WHITE);
+    batch_add(&b, 15U, 72U, 6U, 4U, SAVER_COL_BLUSH);
+  }
+  if (!right_dn) {
+    batch_add(&b, 102U, 68U, 14U, 12U, SAVER_COL_WHITE);
+    batch_add(&b, 107U, 72U, 6U, 4U, SAVER_COL_BLUSH);
+  }
+  /* Wagging tail */
+  batch_add(&b, tail_flip ? 112U : 106U, 84U, 10U, 10U, SAVER_COL_WHITE);
+  batch_submit(hud, &b, false);
+
+  /* Batch 2: Mini RGB mechanical keyboard on desk + slapping paws + music notes */
+  batch_init(&b);
+  batch_add(&b, 26U, 78U, 76U, 18U, SAVER_COL_WHITE); /* restore lower cat belly */
+  batch_add(&b, 32U, 85U, 64U, 11U, 0x2127U);         /* keyboard chassis */
+  static uint16_t const k_rgb_keys[6] = {
+    SAVER_COL_CYAN, SAVER_COL_MINT, SAVER_COL_AMBER,
+    SAVER_COL_HEART, SAVER_COL_PURPLE, SAVER_COL_CORAL,
+  };
+  for (uint8_t k = 0U; k < 6U; k++) {
+    bool lit = (left_dn && k < 3U) || (right_dn && k >= 3U);
+    uint16_t kc = lit ? k_rgb_keys[(k + phase) % 6U] : 0x4A8EU;
+    batch_add(&b, (uint8_t)(35U + (k * 10U)), 88U, 8U, 5U, kc);
+  }
+  if (left_dn) {
+    batch_add(&b, 32U, 80U, 18U, 10U, SAVER_COL_WHITE);
+    batch_add(&b, 34U, 89U, 14U, 2U, SAVER_COL_CYAN);
+  }
+  if (right_dn) {
+    batch_add(&b, 78U, 80U, 18U, 10U, SAVER_COL_WHITE);
+    batch_add(&b, 80U, 89U, 14U, 2U, SAVER_COL_HEART);
+  }
+  /* Clear top note area */
+  batch_add(&b, 4U, 6U, 22U, 24U, SAVER_COL_BLACK);
+  batch_add(&b, 102U, 6U, 22U, 24U, SAVER_COL_BLACK);
+  bool has_note = left_dn || right_dn;
+  batch_submit(hud, &b, !has_note);
+
+  if (has_note) {
+    uint8_t ny = (uint8_t)(18U - ((phase & 3U) * 3U));
+    if (left_dn) {
+      q_text(hud, 8U, ny, "*", SAVER_COL_CYAN, SAVER_COL_BLACK, 1U, false, !right_dn);
+    }
+    if (right_dn) {
+      q_text(hud, 108U, ny, "+", SAVER_COL_HEART, SAVER_COL_BLACK, 1U, false, true);
+    }
+  }
+}
+
+/* ---- Built-in Matrix Digital Rain Screensaver (Pitch Black Background) ---- */
+static void draw_saver_matrix_static(pixel_hud_t *hud)
+{
+  static uint8_t const k_seed[10] = { 0U, 5U, 10U, 2U, 7U, 12U, 4U, 9U, 1U, 6U };
+  q_fill(hud, 0U, 0U, 128U, 128U, SAVER_COL_BLACK, true);
+  memcpy(hud->matrix_y, k_seed, sizeof(hud->matrix_y));
+}
+
+static void draw_saver_matrix_step(pixel_hud_t *hud)
+{
+  static char const k_glyphs[24] = "0123456789ABCDEF$#@*+<>/";
+  uint16_t step = hud->saver_step;
+
+  for (uint8_t pass = 0U; pass < 2U; pass++) {
+    uint8_t col = (uint8_t)((step + (pass * 5U)) % 10U);
+    uint8_t x   = (uint8_t)(4U + (col * 12U));
+    uint8_t hy  = hud->matrix_y[col];
+    bool    is_last_pass = (pass == 1U);
+
+    /* Erase tail 5 rows behind head */
+    if (hy >= 5U && (hy - 5U) < 10U) {
+      q_fill(hud, x, (uint8_t)(4U + ((hy - 5U) * 12U)), 6U, 12U, SAVER_COL_BLACK, false);
+    }
+    /* Dim trail 3 rows behind head */
+    if (hy >= 3U && (hy - 3U) < 10U) {
+      char g[2] = { k_glyphs[(step + col * 7U + hy) % 24U], '\0' };
+      q_text(hud, x, (uint8_t)(4U + ((hy - 3U) * 12U)), g, 0x0320U, SAVER_COL_BLACK, 1U, false, false);
+    }
+    /* Bright phosphor green 1 row behind head */
+    if (hy >= 1U && (hy - 1U) < 10U) {
+      char g[2] = { k_glyphs[(step + col * 3U + hy * 5U) % 24U], '\0' };
+      q_text(hud, x, (uint8_t)(4U + ((hy - 1U) * 12U)), g, 0x07E0U, SAVER_COL_BLACK, 1U, false,
+             is_last_pass && (hy >= 10U));
+    }
+    /* Glowing white-mint head glyph */
+    if (hy < 10U) {
+      char g[2] = { k_glyphs[(step * 3U + col * 11U + hy) % 24U], '\0' };
+      q_text(hud, x, (uint8_t)(4U + (hy * 12U)), g, 0xDFBFU, SAVER_COL_BLACK, 1U, false, is_last_pass);
+    } else if (is_last_pass && (hy < 1U || (hy - 1U) >= 10U)) {
+      uint8_t f = 0xFFU;
+      (void)enqueue_op(hud, PIXEL_HUD_CMD_BRIGHTNESS, &f, 1U);
+    }
+    hud->matrix_y[col] = (uint8_t)((hy + 1U) % 15U);
+  }
+}
+
+/* ---- Built-in Bouncing Retro TK75 DVD Logo Screensaver (Pitch Black Background) ---- */
+#define DVD_BADGE_W 46U
+#define DVD_BADGE_H 24U
+
+static void draw_saver_dvd_static(pixel_hud_t *hud)
+{
+  q_fill(hud, 0U, 0U, 128U, 128U, SAVER_COL_BLACK, true);
+  hud->dvd_x       = 24;
+  hud->dvd_y       = 32;
+  hud->dvd_dx      = 3;
+  hud->dvd_dy      = 2;
+  hud->dvd_col_idx = 0U;
+  hud->dvd_corners = 0U;
+}
+
+static void draw_saver_dvd_step(pixel_hud_t *hud)
+{
+  static uint16_t const k_dvd_cols[6] = {
+    SAVER_COL_CYAN, SAVER_COL_HEART, SAVER_COL_MINT,
+    SAVER_COL_AMBER, SAVER_COL_PURPLE, SAVER_COL_CORAL,
+  };
+
+  int16_t old_x = hud->dvd_x;
+  int16_t old_y = hud->dvd_y;
+  int16_t nx    = (int16_t)(old_x + hud->dvd_dx);
+  int16_t ny    = (int16_t)(old_y + hud->dvd_dy);
+  bool hit_x    = false;
+  bool hit_y    = false;
+
+  if (nx <= 2) {
+    nx = 2; hud->dvd_dx = 3; hit_x = true;
+  } else if (nx >= (int16_t)(126 - DVD_BADGE_W)) {
+    nx = (int16_t)(126 - DVD_BADGE_W); hud->dvd_dx = -3; hit_x = true;
+  }
+  if (ny <= 2) {
+    ny = 2; hud->dvd_dy = 2; hit_y = true;
+  } else if (ny >= (int16_t)(126 - DVD_BADGE_H)) {
+    ny = (int16_t)(126 - DVD_BADGE_H); hud->dvd_dy = -2; hit_y = true;
+  }
+
+  if (hit_x || hit_y) {
+    hud->dvd_col_idx = (uint8_t)((hud->dvd_col_idx + 1U) % 6U);
+  }
+  bool corner = hit_x && hit_y;
+  if (corner) {
+    hud->dvd_corners++;
+  }
+  hud->dvd_x = nx;
+  hud->dvd_y = ny;
+
+  uint16_t col = corner ? SAVER_COL_GOLD : k_dvd_cols[hud->dvd_col_idx];
+  rect_batch_t b;
+  batch_init(&b);
+  batch_add(&b, (uint8_t)old_x, (uint8_t)old_y, DVD_BADGE_W, DVD_BADGE_H, SAVER_COL_BLACK);
+  /* Rounded retro neon DVD pill */
+  batch_add(&b, (uint8_t)(nx + 2), (uint8_t)ny, (uint8_t)(DVD_BADGE_W - 4U), DVD_BADGE_H, col);
+  batch_add(&b, (uint8_t)nx, (uint8_t)(ny + 2), DVD_BADGE_W, (uint8_t)(DVD_BADGE_H - 4U), col);
+  batch_add(&b, (uint8_t)(nx + 3), (uint8_t)(ny + 2), (uint8_t)(DVD_BADGE_W - 6U), 14U, SAVER_COL_BLACK);
+  batch_add(&b, (uint8_t)(nx + 8), (uint8_t)(ny + 19), (uint8_t)(DVD_BADGE_W - 16U), 2U, SAVER_COL_BLACK);
+  batch_submit(hud, &b, false);
+
+  q_text(hud, (uint8_t)(nx + 11), (uint8_t)(ny + 3), "TK75", col, SAVER_COL_BLACK, 1U, false, true);
+}
+
+/* ---- Custom Animated GIF Player Fallback Card (when no GIF in U9 or U24 < v1.3) ---- */
+static void draw_saver_gif_fallback(pixel_hud_t *hud, bool needs_u24_update)
+{
+  hud_theme_t const *th = active_theme(hud);
+  q_fill(hud, 0U, 0U, 128U, 128U, SAVER_COL_BLACK, false);
+
+  rect_batch_t b;
+  batch_init(&b);
+  batch_add(&b, 6U, 16U, 116U, 96U, th->border);
+  batch_add(&b, 8U, 18U, 112U, 92U, th->card);
+  batch_add(&b, 8U, 18U, 112U, 3U, th->accent);
+  batch_submit(hud, &b, false);
+
+  q_text(hud, 28U, 28U, "CUSTOM GIF", th->accent, th->card, 1U, false, false);
+  q_text(hud, 16U, 48U, needs_u24_update ? "FLASH U24 v1.3" : "NO GIF IN U9  ",
+         th->warn, th->card, 1U, false, false);
+  q_text(hud, 16U, 66U, "USE CLI TOOL: ", th->muted, th->card, 1U, false, false);
+  q_text(hud, 14U, 80U, "tk75_tft_gif.py", th->text, th->card, 1U, false, false);
+  q_text(hud, 22U, 96U, "TYPE TO WAKE", th->good, th->card, 1U, false, true);
+}
+
+static bool u24_supports_u9_gif(pixel_hud_t const *hud)
+{
+  return (hud->patch_major > 1U) || (hud->patch_major == 1U && hud->patch_minor >= 3U);
+}
+
 /* Fullscreen interactive 82-key Hall calibration screen (128x128, themed) */
 static void draw_cal_static(pixel_hud_t *hud)
 {
@@ -2114,8 +2554,17 @@ void pixel_hud_on_rx(pixel_hud_t *hud, uart7_rx_frame_t const *frame)
   if (hud == NULL || frame == NULL) {
     return;
   }
-  if (frame->cmd >= 0xA0U && frame->cmd <= 0xA6U) {
+  if (frame->cmd >= 0xA0U && frame->cmd <= 0xA9U) {
     hud->awaiting_ack = false;
+  }
+  if (frame->cmd == 0xA9U && frame->payload_len >= 5U && frame->payload[0] == 0x00U) {
+    hud->u9_gif_probed = true;
+    hud->u9_gif_valid  = (frame->payload[1] != 0U) && (frame->payload[2] > 0U);
+    hud->u9_gif_frames = frame->payload[2];
+    uint16_t dms = (uint16_t)frame->payload[3] | ((uint16_t)frame->payload[4] << 8U);
+    if (dms < 33U) dms = 33U;
+    if (dms > 2000U) dms = 2000U;
+    hud->u9_gif_delay_ms = dms;
   }
   if (frame->cmd == 0xA5U && frame->payload_len >= 3U && frame->payload[0] == 0x00U) {
     hud->patch_major = frame->payload[1];
@@ -2328,7 +2777,9 @@ static bool adjust_focused_item(pixel_hud_t *hud, int8_t dir)
       return true;
     }
     if (hud->focus_row == 2U) {
-      c->tft_screensaver ^= 1U;
+      int32_t cur = (int32_t)normalize_saver_mode(c->tft_screensaver);
+      int32_t nxt = (cur + dir + (int32_t)TFT_SAVER_COUNT) % (int32_t)TFT_SAVER_COUNT;
+      c->tft_screensaver = (uint8_t)nxt;
       return true;
     }
     if (hud->focus_row == 3U) {
@@ -2622,30 +3073,119 @@ void pixel_hud_tick(pixel_hud_t *hud, uint32_t now_ms)
     invalidate_render_cache(hud);
   }
 
-  /* Idle clock & system info screensaver */
-  bool saver_want = (hud->cfg->tft_screensaver != 0U) && !hud->menu_open &&
+  /* Selectable Idle Screensaver (Clock, Funny Eyes, Bongo Cat, Matrix, DVD, Custom U9 GIF) */
+  uint8_t saver_mode = normalize_saver_mode(hud->cfg->tft_screensaver);
+  bool saver_want = (saver_mode != (uint8_t)TFT_SAVER_OFF) && !hud->menu_open &&
                     (hud->page == PIXEL_PAGE_HOME) &&
                     (hud->live.idle_ms >= SCREENSAVER_IDLE_MS) &&
                     !hud->live.any_actuated;
   if (saver_want) {
-    if (!hud->screensaver_active) {
-      hud->screensaver_active   = true;
-      hud->saver_phase          = 0U;
-      hud->prev_saver_hour      = 0xFFU;
-      hud->prev_saver_min       = 0xFFU;
-      hud->prev_saver_sec       = 0xFFU;
-      hud->prev_saver_rtc_valid = false;
-      hud->last_anim_ms         = now_ms;
-      draw_screensaver_static(hud);
-      draw_screensaver_anim(hud, true);
+    if (!hud->screensaver_active || hud->saver_mode_rendered != saver_mode) {
+      hud->screensaver_active    = true;
+      hud->saver_mode_rendered   = saver_mode;
+      hud->saver_phase           = 0U;
+      hud->saver_step            = 0U;
+      hud->prev_saver_hour       = 0xFFU;
+      hud->prev_saver_min        = 0xFFU;
+      hud->prev_saver_sec        = 0xFFU;
+      hud->prev_saver_rtc_valid  = false;
+      hud->u9_gif_probed         = false;
+      hud->u9_gif_valid          = false;
+      hud->u9_gif_fallback_drawn = false;
+      hud->u9_gif_cur_frame      = 0U;
+      hud->u9_gif_probe_ms       = now_ms;
+      hud->last_anim_ms          = now_ms;
+
+      switch (saver_mode) {
+        case TFT_SAVER_CLOCK:
+          draw_screensaver_static(hud);
+          draw_screensaver_anim(hud, true);
+          break;
+        case TFT_SAVER_EYES:
+          q_fill(hud, 0U, 0U, 128U, 128U, SAVER_COL_BLACK, false);
+          draw_saver_eyes_frame(hud);
+          break;
+        case TFT_SAVER_CAT:
+          draw_saver_cat_static(hud);
+          draw_saver_cat_frame(hud);
+          break;
+        case TFT_SAVER_MATRIX:
+          draw_saver_matrix_static(hud);
+          draw_saver_matrix_step(hud);
+          break;
+        case TFT_SAVER_DVD:
+          draw_saver_dvd_static(hud);
+          draw_saver_dvd_step(hud);
+          break;
+        case TFT_SAVER_GIF:
+          if (u24_supports_u9_gif(hud)) {
+            uint8_t qop = 0U;
+            (void)enqueue_op(hud, PIXEL_HUD_CMD_GIF_PLAY, &qop, 1U);
+          } else {
+            draw_saver_gif_fallback(hud, true);
+            hud->u9_gif_fallback_drawn = true;
+          }
+          break;
+        default:
+          break;
+      }
       pump_tx_queue(hud, now_ms);
       return;
     }
-    if ((uint32_t)(now_ms - hud->last_anim_ms) >= 500U) {
-      hud->last_anim_ms = now_ms;
-      hud->saver_phase  = (uint8_t)((hud->saver_phase + 1U) & 3U);
-      draw_screensaver_anim(hud, false);
-      pump_tx_queue(hud, now_ms);
+
+    if (saver_mode == (uint8_t)TFT_SAVER_CLOCK) {
+      if ((uint32_t)(now_ms - hud->last_anim_ms) >= 500U) {
+        hud->last_anim_ms = now_ms;
+        hud->saver_phase  = (uint8_t)((hud->saver_phase + 1U) & 3U);
+        draw_screensaver_anim(hud, false);
+        pump_tx_queue(hud, now_ms);
+      }
+    } else if (saver_mode == (uint8_t)TFT_SAVER_EYES) {
+      if ((uint32_t)(now_ms - hud->last_anim_ms) >= 100U) {
+        hud->last_anim_ms = now_ms;
+        hud->saver_step++;
+        draw_saver_eyes_frame(hud);
+        pump_tx_queue(hud, now_ms);
+      }
+    } else if (saver_mode == (uint8_t)TFT_SAVER_CAT) {
+      if ((uint32_t)(now_ms - hud->last_anim_ms) >= 140U) {
+        hud->last_anim_ms = now_ms;
+        hud->saver_step++;
+        draw_saver_cat_frame(hud);
+        pump_tx_queue(hud, now_ms);
+      }
+    } else if (saver_mode == (uint8_t)TFT_SAVER_MATRIX) {
+      if ((uint32_t)(now_ms - hud->last_anim_ms) >= 100U) {
+        hud->last_anim_ms = now_ms;
+        hud->saver_step++;
+        draw_saver_matrix_step(hud);
+        pump_tx_queue(hud, now_ms);
+      }
+    } else if (saver_mode == (uint8_t)TFT_SAVER_DVD) {
+      if ((uint32_t)(now_ms - hud->last_anim_ms) >= 65U) {
+        hud->last_anim_ms = now_ms;
+        hud->saver_step++;
+        draw_saver_dvd_step(hud);
+        pump_tx_queue(hud, now_ms);
+      }
+    } else if (saver_mode == (uint8_t)TFT_SAVER_GIF) {
+      if (hud->u9_gif_probed && hud->u9_gif_valid && hud->u9_gif_frames > 0U) {
+        uint16_t period = (hud->u9_gif_delay_ms >= 33U) ? hud->u9_gif_delay_ms : 100U;
+        if (hud->saver_step == 0U ||
+            (hud->u9_gif_frames > 1U && (uint32_t)(now_ms - hud->last_anim_ms) >= period)) {
+          uint8_t cmdp[2] = { 1U, hud->u9_gif_cur_frame };
+          (void)enqueue_op(hud, PIXEL_HUD_CMD_GIF_PLAY, cmdp, 2U);
+          hud->u9_gif_cur_frame = (uint8_t)((hud->u9_gif_cur_frame + 1U) % hud->u9_gif_frames);
+          hud->saver_step++;
+          hud->last_anim_ms = now_ms;
+          pump_tx_queue(hud, now_ms);
+        }
+      } else if (!hud->u9_gif_fallback_drawn &&
+                 (hud->u9_gif_probed || (uint32_t)(now_ms - hud->u9_gif_probe_ms) >= 400U)) {
+        draw_saver_gif_fallback(hud, !u24_supports_u9_gif(hud));
+        hud->u9_gif_fallback_drawn = true;
+        pump_tx_queue(hud, now_ms);
+      }
     }
     return;
   } else if (hud->screensaver_active) {

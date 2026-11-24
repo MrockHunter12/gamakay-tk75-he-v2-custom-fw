@@ -116,7 +116,26 @@ static bool sim_send_uart7(uart7_tx_frame_t const *frame, void *ctx)
     ack.payload_len       = 3U;
     ack.payload[0]        = 0x00U;
     ack.payload[1]        = 1U;
-    ack.payload[2]        = 2U;
+    ack.payload[2]        = 3U;
+    g_sim.pending_ack     = ack;
+    g_sim.has_pending_ack = true;
+    return true;
+  }
+
+  if (cmd == PIXEL_HUD_CMD_GIF_PLAY && plen >= 1U) {
+    ack.cmd = 0xA9U;
+    if (p[0] == 0U) {
+      ack.payload_len = 5U;
+      ack.payload[0]  = 0x00U;
+      ack.payload[1]  = 0U; /* no GIF loaded in sim by default */
+      ack.payload[2]  = 0U;
+      ack.payload[3]  = 100U;
+      ack.payload[4]  = 0U;
+    } else {
+      ack.payload_len = 2U;
+      ack.payload[0]  = 0x00U;
+      ack.payload[1]  = (plen >= 2U) ? p[1] : 0U;
+    }
     g_sim.pending_ack     = ack;
     g_sim.has_pending_ack = true;
     return true;

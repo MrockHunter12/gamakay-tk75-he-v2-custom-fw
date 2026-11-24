@@ -19,6 +19,8 @@ extern "C" {
 #define PIXEL_HUD_CMD_BRIGHTNESS 0x24U
 #define PIXEL_HUD_CMD_VERSION    0x25U
 #define PIXEL_HUD_CMD_BATCH_RECT 0x26U
+#define PIXEL_HUD_CMD_U9_FLASH   0x28U
+#define PIXEL_HUD_CMD_GIF_PLAY   0x29U
 
 #define PIXEL_HUD_QUEUE_CAP      48U
 
@@ -135,12 +137,28 @@ typedef struct {
   bool                prev_cal_key_done;
   char                prev_cal_label[5];
   bool                screensaver_active;
+  uint8_t             saver_mode_rendered;
   uint8_t             saver_phase;
+  uint16_t            saver_step;
   uint8_t             prev_saver_hour;
   uint8_t             prev_saver_min;
   uint8_t             prev_saver_sec;
   bool                prev_saver_rtc_valid;
   uint32_t            prev_saver_hash;
+  int16_t             dvd_x;
+  int16_t             dvd_y;
+  int8_t              dvd_dx;
+  int8_t              dvd_dy;
+  uint8_t             dvd_col_idx;
+  uint8_t             dvd_corners;
+  uint8_t             matrix_y[10];
+  bool                u9_gif_probed;
+  bool                u9_gif_valid;
+  bool                u9_gif_fallback_drawn;
+  uint8_t             u9_gif_frames;
+  uint8_t             u9_gif_cur_frame;
+  uint16_t            u9_gif_delay_ms;
+  uint32_t            u9_gif_probe_ms;
 
   /* Non-blocking UART7 draw command ring buffer */
   pixel_hud_op_t      q[PIXEL_HUD_QUEUE_CAP];

@@ -508,3 +508,88 @@ def test_tft_all_theme_switches_framebuffer(tmp_path: pathlib.Path) -> None:
         t += 60
         assert got_menu == menu_frames[dst_t], f"Stale Menu pixels on switch {src_t}->{dst_t}"
 
+    # Verify all built-in screensaver modes (1=CLOCK, 2=EYES, 3=CAT, 4=MATRIX, 5=DVD, 6=GIF fallback)
+    # render distinct frames and wake back to canonical Home with ZERO stale pixel residue
+    lib.sim_set_tft_theme(ctypes.c_uint8(0))
+    lib.sim_hud_close_menu()
+    saver_frames: dict[int, bytes] = {}
+    for sm in (1, 2, 3, 4, 5, 6):
+        lib.sim_set_tft_cfg(ctypes.c_uint8(80), ctypes.c_uint8(sm), ctypes.c_uint8(0))
+        lib.sim_step(
+            ctypes.c_uint32(t),
+            ctypes.c_uint16(68),
+            ctypes.c_uint16(95),
+            ctypes.c_uint32(321),
+            ctypes.c_uint8(0),
+            ctypes.c_uint8(0),
+            ctypes.c_uint32(1),
+            ctypes.c_uint8(0),
+            ctypes.c_uint8(0),
+            ctypes.c_uint16(0),
+            ctypes.c_uint8(0),
+            ctypes.c_uint8(0),
+            ctypes.c_uint32(35000),
+            ctypes.c_uint8(14),
+            ctypes.c_uint8(25),
+            ctypes.c_uint8(10),
+            None,
+        )
+        t += 150
+        lib.sim_step(
+            ctypes.c_uint32(t),
+            ctypes.c_uint16(68),
+            ctypes.c_uint16(95),
+            ctypes.c_uint32(321),
+            ctypes.c_uint8(0),
+            ctypes.c_uint8(0),
+            ctypes.c_uint32(1),
+            ctypes.c_uint8(0),
+            ctypes.c_uint8(0),
+            ctypes.c_uint16(0),
+            ctypes.c_uint8(0),
+            ctypes.c_uint8(0),
+            ctypes.c_uint32(35200),
+            ctypes.c_uint8(14),
+            ctypes.c_uint8(25),
+            ctypes.c_uint8(11),
+            None,
+        )
+        buf = (ctypes.c_uint8 * (128 * 128 * 3))()
+        lib.sim_get_tft_rgb(buf)
+        saver_frames[sm] = bytes(buf)
+        t += 150
+
+    for a in (1, 2, 3, 4, 5, 6):
+        for b in (1, 2, 3, 4, 5, 6):
+            if a < b:
+                assert saver_frames[a] != saver_frames[b], f"Screensaver {a} and {b} rendered identically"
+
+    # Wake back to Home -> must match canonical PIXEL Home frame identically
+    woke_home = capture(t + 100)
+    assert woke_home == home_frames[0], "Stale screensaver pixels remained after waking to Home"
+
+
+def test_gif_tools_and_bundled_funny_gifs(tmp_path: pathlib.Path) -> None:
+    """Verify bundled funny GIFs decode cleanly to <=31 frames, pack TKGF header & pass dry-run."""
+    import tk75_tft_gif
+
+    gif_dir = ROOT / "assets" / "gifs"
+    expected = ["funny_eyes.gif", "bongo_cat.gif", "party_parrot.gif", "nyan_space.gif", "coffee_afk.gif"]
+    for name in expected:
+        p = gif_dir / name
+        assert p.is_file(), f"Missing bundled GIF {p}"
+        frames, delay_ms = tk75_tft_gif.load_gif_frames(p)
+        assert 1 <= len(frames) <= tk75_tft_gif.U9_GIF_MAX_FRAMES
+        assert all(len(f) == tk75_tft_gif.U9_GIF_FRAME_BYTES for f in frames)
+        assert 33 <= delay_ms <= 2000
+
+    hdr = tk75_tft_gif.build_gif_header("funny_eyes", 30, 170, 0x12345678)
+    assert len(hdr) == 32
+    parsed = tk75_tft_gif.parse_gif_header(hdr)
+    assert parsed == {"version": 1, "frame_count": 30, "delay_ms": 170, "crc32": 0x12345678, "name": "funny_eyes"}
+    assert tk75_tft_gif.parse_gif_header(b"\xFF" * 32) is None
+
+    assert tk75_tft_gif.main(["upload", str(gif_dir / "funny_eyes.gif"), "--dry-run"]) == 0
+    assert tk75_tft_gif.main(["set-mode", "eyes", "--dry-run"]) == 0
+
+
