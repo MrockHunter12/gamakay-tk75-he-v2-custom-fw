@@ -2009,26 +2009,23 @@ static int32_t smooth_lerp(int32_t a, int32_t b, uint32_t t, uint32_t dur)
 
 static void draw_saver_eyes_frame(pixel_hud_t *hud, bool force_draw)
 {
-  /* Calm ~11.2s loop at 60 ms/tick (~17 FPS): smooth eased glides, side-eye, gentle blinks */
+  /* Calm ~14s loop at 60 ms/tick (~17 FPS): looks straight at you & stays, then glides smoothly */
   static eye_kf_t const k_eye_seq[] = {
-    { 20U,   0,  0,  0U,  0U }, /* 1.2s calm center hold */
+    { 35U,   0,  0,  0U,  0U }, /* 2.1s calmly looking right at you */
+    {  3U,   0,  0, 26U, 26U }, /* soft natural blink close */
+    {  4U,   0,  0,  0U,  0U }, /* soft blink open */
+    { 15U,   0,  0,  0U,  0U }, /* 0.9s pause looking at you */
     { 10U,  11, -2,  0U,  0U }, /* 0.6s smooth glide right */
-    { 20U,  11, -2,  0U,  0U }, /* 1.2s hold right */
-    {  3U,  11, -2, 26U, 26U }, /* smooth blink close */
-    {  4U,  11, -2,  0U,  0U }, /* smooth blink open */
-    { 15U, -11, -2,  0U,  0U }, /* 0.9s smooth glide left */
-    { 20U, -11, -2,  0U,  0U }, /* 1.2s hold left */
+    { 22U,  11, -2,  0U,  0U }, /* 1.3s hold right */
+    { 16U, -11, -2,  0U,  0U }, /* 0.96s smooth glide left */
+    { 22U, -11, -2,  0U,  0U }, /* 1.3s hold left */
+    { 10U,   0,  0,  0U,  0U }, /* 0.6s smooth return to you */
+    { 30U,   0,  0,  0U,  0U }, /* 1.8s calmly looking right at you */
     {  8U, -11,  2, 18U, 13U }, /* 0.5s narrow eyelids into side-eye */
-    { 14U, -11,  2, 18U, 13U }, /* 0.8s hold side-eye left */
+    { 16U, -11,  2, 18U, 13U }, /* 1.0s hold side-eye left */
     { 18U,  11,  2, 18U, 13U }, /* 1.1s slow sly side-eye slide left -> right */
     { 16U,  11,  2, 18U, 13U }, /* 1.0s hold side-eye right */
-    {  8U,  11,  0,  0U,  0U }, /* 0.5s eyelids smoothly open */
-    { 11U,   0,  0,  0U,  0U }, /* 0.7s smooth return to center */
-    {  6U,   0,  0,  0U,  0U }, /* 0.36s calm pause */
-    {  3U,   0,  0, 26U, 26U }, /* double blink 1 close */
-    {  4U,   0,  0,  0U,  0U }, /* double blink 1 open */
-    {  3U,   0,  0, 26U, 26U }, /* double blink 2 close */
-    {  4U,   0,  0,  0U,  0U }, /* double blink 2 open */
+    {  8U,   0,  0,  0U,  0U }, /* 0.5s open lids & look back at you */
   };
   enum { EYE_KF_COUNT = (uint32_t)(sizeof(k_eye_seq) / sizeof(k_eye_seq[0])) };
 
@@ -2515,7 +2512,13 @@ void pixel_hud_on_rx(pixel_hud_t *hud, uart7_rx_frame_t const *frame)
     hud->u9_gif_frames = frame->payload[2];
     uint16_t dms = (uint16_t)frame->payload[3] | ((uint16_t)frame->payload[4] << 8U);
     if (dms < 33U) dms = 33U;
-    if (dms > 2000U) dms = 2000U;
+    if (dms > 10000U) dms = 10000U;
+    hud->u9_gif_delay_ms = dms;
+  } else if (frame->cmd == 0xA9U && frame->payload_len == 4U && frame->payload[0] == 0x00U) {
+    /* U24 v1.4+ per-frame hold duration returned with each frame draw ACK */
+    uint16_t dms = (uint16_t)frame->payload[2] | ((uint16_t)frame->payload[3] << 8U);
+    if (dms < 33U) dms = 33U;
+    if (dms > 10000U) dms = 10000U;
     hud->u9_gif_delay_ms = dms;
   }
   if (frame->cmd == 0xA5U && frame->payload_len >= 3U && frame->payload[0] == 0x00U) {

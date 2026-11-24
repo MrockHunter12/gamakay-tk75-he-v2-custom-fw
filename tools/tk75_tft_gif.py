@@ -34,8 +34,9 @@ U9_GIF_DATA_ADDR = 0x006C8000
 U9_GIF_FRAME_BYTES = 0x8000  # 128 * 128 * 2
 U9_GIF_MAX_FRAMES = 31
 U9_GIF_HDR_MAGIC = b"TKGF"
-U9_GIF_HDR_VERSION = 1
-U9_GIF_HDR_SIZE = 32
+U9_GIF_HDR_VERSION = 2
+U9_GIF_HDR_V1_SIZE = 32
+U9_GIF_HDR_SIZE = 32 + U9_GIF_MAX_FRAMES * 2  # 94 bytes (base 32B + 31 x uint16 per-frame delays)
 U9_PROG_CHUNK = 64  # Evenly divides 256 B flash page and fits 3 VIA packets
 
 CMD_VERSION = 0x25
@@ -79,8 +80,8 @@ def load_gif_frames(
     max_frames: int = U9_GIF_MAX_FRAMES,
     fps_override: float | None = None,
     stretch: bool = False,
-) -> tuple[list[bytes], int]:
-    """Decode GIF/WebP/PNG into <=31 128x128 column-major BE RGB565 frames + delay_ms."""
+) -> tuple[list[bytes], list[int]]:
+    """Decode GIF/WebP/PNG into <=31 128x128 column-major BE RGB565 frames + per-frame delays (ms)."""
     from PIL import Image, ImageOps, ImageSequence
 
     if not (1 <= max_frames <= U9_GIF_MAX_FRAMES):
@@ -92,7 +93,7 @@ def load_gif_frames(
     with Image.open(path) as im:
         for frame in ImageSequence.Iterator(im):
             dur = int(frame.info.get("duration", im.info.get("duration", 100)) or 100)
-            durations_ms.append(max(20, dur))
+            durations_ms.append(max(33, min(10000, dur)))
             raw_rgba_frames.append(frame.convert("RGBA"))
 
     if not raw_rgba_frames:
@@ -104,18 +105,16 @@ def load_gif_frames(
         indices = [int(round(i * (total - 1) / (max_frames - 1))) for i in range(max_frames)]
         selected = [raw_rgba_frames[i] for i in indices]
         scale = total / float(max_frames)
-        avg_dur = int(round((sum(durations_ms) / len(durations_ms)) * scale))
+        selected_durs = [max(33, min(10000, int(round(durations_ms[i] * scale)))) for i in indices]
     else:
         selected = raw_rgba_frames
-        avg_dur = int(round(sum(durations_ms) / len(durations_ms)))
+        selected_durs = durations_ms
 
     if fps_override is not None:
         if fps_override <= 0:
             raise ValueError("--fps must be > 0")
-        delay_ms = int(round(1000.0 / fps_override))
-    else:
-        delay_ms = avg_dur
-    delay_ms = max(33, min(2000, delay_ms))
+        fixed = max(33, min(10000, int(round(1000.0 / fps_override))))
+        selected_durs = [fixed] * len(selected)
 
     encoded: list[bytes] = []
     for rgba in selected:
@@ -130,40 +129,59 @@ def load_gif_frames(
             canvas.paste(fitted, (ox, oy), fitted)
         encoded.append(rgb_image_to_col_major_be565(canvas))
 
-    return encoded, delay_ms
+    return encoded, selected_durs
 
 
-def build_gif_header(name: str, frame_count: int, delay_ms: int, data_crc32: int) -> bytes:
-    """Pack 32-byte U9 'TKGF' header written at 0x006C0000."""
+def build_gif_header(
+    name: str,
+    frame_count: int,
+    delay_ms: int | Sequence[int],
+    data_crc32: int,
+) -> bytes:
+    """Pack 94-byte U9 'TKGF' v2 header (32B base + 31 x uint16 per-frame delays) @ 0x006C0000."""
     if not (1 <= frame_count <= U9_GIF_MAX_FRAMES):
         raise ValueError(f"frame_count must be 1..{U9_GIF_MAX_FRAMES}")
-    delay_clamped = max(33, min(2000, int(delay_ms)))
+    if isinstance(delay_ms, int):
+        delays = [max(33, min(10000, delay_ms))] * frame_count
+    else:
+        delays = [max(33, min(10000, int(d))) for d in delay_ms][:frame_count]
+        while len(delays) < frame_count:
+            delays.append(delays[-1] if delays else 100)
+    default_delay = delays[0]
+    padded_delays = delays + [default_delay] * (U9_GIF_MAX_FRAMES - len(delays))
     name_bytes = name.encode("ascii", errors="ignore")[:15]
     name_padded = name_bytes.ljust(16, b"\x00")
-    return struct.pack(
+    base = struct.pack(
         "<4sBBHII16s",
         U9_GIF_HDR_MAGIC,
         U9_GIF_HDR_VERSION,
         frame_count,
-        delay_clamped,
+        default_delay,
         data_crc32 & 0xFFFFFFFF,
         0,
         name_padded,
     )
+    return base + struct.pack(f"<{U9_GIF_MAX_FRAMES}H", *padded_delays)
 
 
-def parse_gif_header(raw32: bytes) -> dict[str, object] | None:
-    """Decode 32-byte U9 'TKGF' header; return None if magic/version/count invalid."""
-    if len(raw32) < U9_GIF_HDR_SIZE:
+def parse_gif_header(raw: bytes) -> dict[str, object] | None:
+    """Decode U9 'TKGF' v1 (32B) or v2 (94B) header; return None if magic/version/count invalid."""
+    if len(raw) < U9_GIF_HDR_V1_SIZE:
         return None
-    magic, ver, count, delay_ms, crc32, _res, raw_name = struct.unpack_from("<4sBBHII16s", raw32, 0)
-    if magic != U9_GIF_HDR_MAGIC or ver != U9_GIF_HDR_VERSION or not (1 <= count <= U9_GIF_MAX_FRAMES):
+    magic, ver, count, delay_ms, crc32, _res, raw_name = struct.unpack_from("<4sBBHII16s", raw, 0)
+    if magic != U9_GIF_HDR_MAGIC or ver not in (1, 2) or not (1 <= count <= U9_GIF_MAX_FRAMES):
         return None
     name = raw_name.split(b"\x00", 1)[0].decode("ascii", errors="replace")
+    if ver == 2 and len(raw) >= U9_GIF_HDR_SIZE:
+        all_d = struct.unpack_from(f"<{U9_GIF_MAX_FRAMES}H", raw, U9_GIF_HDR_V1_SIZE)
+        frame_delays = list(all_d[:count])
+    else:
+        frame_delays = [delay_ms] * count
     return {
         "version": ver,
         "frame_count": count,
         "delay_ms": delay_ms,
+        "frame_delays_ms": frame_delays,
         "crc32": crc32,
         "name": name,
     }
@@ -252,20 +270,21 @@ def set_via_screensaver_mode(mode_id: int, save_eeprom: bool = True) -> None:
         via.close()
 
 
-def _play_preview(bridge: TftUartBridge, frame_count: int, delay_ms: int, seconds: float) -> None:
+def _play_preview(bridge: TftUartBridge, frame_delays_ms: Sequence[int], seconds: float) -> None:
+    frame_count = len(frame_delays_ms)
     if frame_count <= 0 or seconds <= 0:
         return
-    print(f"Previewing {frame_count} frames ({delay_ms} ms/frame) for {seconds:.1f}s...")
+    print(f"Previewing {frame_count} frames ({min(frame_delays_ms)}..{max(frame_delays_ms)} ms/frame) for {seconds:.1f}s...")
     deadline = time.monotonic() + seconds
     idx = 0
-    step_s = max(0.033, delay_ms / 1000.0)
     while time.monotonic() < deadline:
         t0 = time.monotonic()
         rx_cmd, pay = bridge.exchange(CMD_GIF_PLAY, bytes([1, idx]), timeout_s=1.0)
         if rx_cmd != 0xA9 or not pay or pay[0] != 0x00:
             raise RuntimeError(f"Preview frame {idx} failed: cmd=0x{rx_cmd:02X} pay={pay.hex(' ')}")
+        step_s = max(0.033, frame_delays_ms[idx] / 1000.0)
         idx = (idx + 1) % frame_count
-        rem = step_s - (time.monotonic() - t0)
+        rem = min(step_s - (time.monotonic() - t0), max(0.0, deadline - time.monotonic()))
         if rem > 0:
             time.sleep(rem)
 
@@ -307,7 +326,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if args.cmd == "upload":
-        frames, delay_ms = load_gif_frames(
+        frames, frame_delays = load_gif_frames(
             args.gif,
             max_frames=args.max_frames,
             fps_override=args.fps,
@@ -316,11 +335,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         blob = b"".join(frames)
         crc = zlib.crc32(blob) & 0xFFFFFFFF
         label = args.name if args.name else args.gif.stem
-        hdr = build_gif_header(label, len(frames), delay_ms, crc)
+        hdr = build_gif_header(label, len(frames), frame_delays, crc)
         if args.dry_run:
             print(
                 f"Dry-run OK: {args.gif.name} -> {len(frames)} frames, "
-                f"{delay_ms} ms ({1000.0 / delay_ms:.1f} FPS), {len(blob)} B, crc32=0x{crc:08X}"
+                f"{min(frame_delays)}..{max(frame_delays)} ms (loop {sum(frame_delays) / 1000.0:.2f}s), "
+                f"{len(blob)} B, crc32=0x{crc:08X}"
             )
             return 0
 
@@ -360,15 +380,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             if dev_crc != crc:
                 raise RuntimeError(f"U9 CRC32 mismatch: device=0x{dev_crc:08X} expected=0x{crc:08X}")
 
-            # 4. Commit 32-byte TKGF header & verify via cmd=0x29 op=0
+            # 4. Commit 94-byte TKGF v2 header & verify via cmd=0x29 op=0
             _u9_prog_range(bridge, U9_GIF_HDR_ADDR, hdr)
             rx_cmd, pay = bridge.exchange(CMD_GIF_PLAY, b"\x00", timeout_s=1.0)
             if rx_cmd != 0xA9 or len(pay) < 5 or pay[0] != 0x00 or pay[1] != 1:
                 raise RuntimeError(f"Header commit verify failed: cmd=0x{rx_cmd:02X} pay={pay.hex(' ')}")
-            print(f"Verified U9 GIF OK! frames={pay[2]} delay={pay[3] | (pay[4] << 8)}ms crc32=0x{crc:08X}")
+            print(
+                f"Verified U9 GIF OK! frames={pay[2]} loop={sum(frame_delays) / 1000.0:.2f}s "
+                f"({min(frame_delays)}..{max(frame_delays)}ms) crc32=0x{crc:08X}"
+            )
 
             if args.preview > 0:
-                _play_preview(bridge, len(frames), delay_ms, args.preview)
+                _play_preview(bridge, frame_delays, args.preview)
         finally:
             try:
                 bridge.set_hud_paused(False)
@@ -397,13 +420,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         if info is None:
             print(f"No valid custom GIF stored in U9 (U24 v{maj}.{minor})")
             return 0
+        f_durs: list[int] = list(info["frame_delays_ms"])  # type: ignore[arg-type]
         print(
-            f"U9 GIF: name={info['name']!r} frames={info['frame_count']} "
-            f"delay={info['delay_ms']}ms ({1000.0 / int(info['delay_ms']):.1f} FPS) "
+            f"U9 GIF (v{info['version']}): name={info['name']!r} frames={info['frame_count']} "
+            f"delays={min(f_durs)}..{max(f_durs)}ms (loop {sum(f_durs) / 1000.0:.2f}s) "
             f"crc32=0x{int(info['crc32']):08X}"
         )
         if args.cmd == "preview":
-            _play_preview(bridge, int(info["frame_count"]), int(info["delay_ms"]), args.seconds)
+            _play_preview(bridge, f_durs, args.seconds)
     finally:
         try:
             bridge.set_hud_paused(False)

@@ -2619,14 +2619,20 @@ static int test_themes_and_energy_save(void)
     CHECK(px_gif.u9_gif_probed && px_gif.u9_gif_valid && px_gif.u9_gif_frames == 4U && px_gif.u9_gif_delay_ms == 120U);
 
     uint8_t frames_seen = 0U;
-    for (uint32_t t = 2510U; t <= 3100U; t += 10U) {
+    for (uint32_t t = 2510U; t <= 3250U; t += 10U) {
       grec.count = 0U;
       pixel_hud_tick(&px_gif, t);
       if (grec.count > 0U && grec.cmds[0] == PIXEL_HUD_CMD_GIF_PLAY && grec.last_payload[0] == 1U) {
         CHECK(grec.last_payload[1] == (frames_seen % 4U));
+        uint16_t next_d = (grec.last_payload[1] == 0U) ? 200U : 100U;
         frames_seen++;
-        uart7_rx_frame_t f_ack = { .cmd = 0xA9U, .payload_len = 2U, .payload = { 0x00U, grec.last_payload[1] } };
+        uart7_rx_frame_t f_ack = {
+          .cmd         = 0xA9U,
+          .payload_len = 4U,
+          .payload     = { 0x00U, grec.last_payload[1], (uint8_t)(next_d & 0xFFU), (uint8_t)(next_d >> 8U) },
+        };
         pixel_hud_on_rx(&px_gif, &f_ack);
+        CHECK(px_gif.u9_gif_delay_ms == next_d);
       }
     }
     CHECK(frames_seen >= 5U);

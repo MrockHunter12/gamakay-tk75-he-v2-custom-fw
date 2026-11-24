@@ -15,6 +15,9 @@
 #define MANUAL_MAGIC_ADDR  0x00036000UL
 #define MANUAL_MAGIC_VAL   0xCAFE5060UL
 #define U9_STAGE_BUF_ADDR  0x00036100UL /* 256 B aligned U9 staging buffer */
+#define U9_GIF_DELAY_CACHE 0x00036200UL /* 31 x uint16_t cached per-frame delays (ms) */
+#define U9_GIF_CACHE_MAGIC 0x00036240UL
+#define U9_GIF_CACHE_VAL   0x47494632UL /* "GIF2" */
 
 /* Safe U9 SPI NOR region strictly dedicated to custom animated GIFs (1.0 MB = 32 x 32 KB blocks).
  * Isolated from stock assets (<=0x404000), U24 config (0x100000), Doom WAD (0x500000..0x677FFF),
@@ -49,12 +52,13 @@ typedef void (*fn_u9_read_t)(uint8_t *, uint32_t, uint32_t);
 
 typedef struct {
   uint8_t  magic[4];    /* "TKGF" */
-  uint8_t  version;     /* 1 */
+  uint8_t  version;     /* 1=fixed delay_ms, 2=per-frame frame_delays_ms[31] */
   uint8_t  frame_count; /* 1..31 */
-  uint16_t delay_ms;    /* frame interval in ms */
+  uint16_t delay_ms;    /* default frame interval in ms */
   uint32_t data_crc32;
   uint32_t reserved;
   char     name[16];
+  uint16_t frame_delays_ms[U9_GIF_MAX_FRAMES]; /* v2: exact per-frame hold ms (33..10000) */
 } u9_gif_hdr_t;
 
 void custom_cmd_hook(void);
@@ -277,6 +281,13 @@ static void handle_u9_flash_cmd(volatile uint8_t const *p, uint16_t plen)
   send_reply_frame(0xA8U, &err, 1U);
 }
 
+static uint16_t clamp_gif_delay(uint16_t dms)
+{
+  if (dms < 33U) return 100U;
+  if (dms > 10000U) return 10000U;
+  return dms;
+}
+
 static void handle_gif_play_cmd(volatile uint8_t const *p, uint16_t plen)
 {
   if (plen < 1U) {
@@ -286,31 +297,39 @@ static void handle_gif_play_cmd(volatile uint8_t const *p, uint16_t plen)
   }
   uint8_t op = p[0];
 
-  /* op=0: Query U9 "TKGF" GIF header -> [0x00, valid, frame_count, delay_lo, delay_hi] */
+  /* op=0: Query U9 "TKGF" v1/v2 GIF header -> [0x00, valid, frame_count, d0_lo, d0_hi] */
   if (op == 0U) {
     u9_gif_hdr_t hdr;
     u9_read_chunked(&hdr, U9_GIF_HDR_ADDR, (uint32_t)sizeof(hdr));
     uint8_t valid = (hdr.magic[0] == 'T' && hdr.magic[1] == 'K' &&
                      hdr.magic[2] == 'G' && hdr.magic[3] == 'F' &&
-                     hdr.version == 1U &&
+                     (hdr.version == 1U || hdr.version == 2U) &&
                      hdr.frame_count >= 1U && hdr.frame_count <= U9_GIF_MAX_FRAMES) ? 1U : 0U;
-    uint16_t dms = hdr.delay_ms;
-    if (dms < 33U) dms = 100U;
-    if (dms > 2000U) dms = 2000U;
+    uint16_t def_d = clamp_gif_delay(hdr.delay_ms);
+    volatile uint16_t *cache = (volatile uint16_t *)U9_GIF_DELAY_CACHE;
+    if (valid) {
+      for (uint32_t i = 0U; i < U9_GIF_MAX_FRAMES; i++) {
+        cache[i] = (hdr.version == 2U) ? clamp_gif_delay(hdr.frame_delays_ms[i]) : def_d;
+      }
+      *(volatile uint32_t *)U9_GIF_CACHE_MAGIC = U9_GIF_CACHE_VAL;
+    } else {
+      *(volatile uint32_t *)U9_GIF_CACHE_MAGIC = 0U;
+    }
+    uint16_t d0 = valid ? cache[0] : def_d;
     uint8_t resp[5];
     resp[0] = 0x00U;
     resp[1] = valid;
     resp[2] = valid ? hdr.frame_count : 0U;
-    resp[3] = (uint8_t)(dms & 0xFFU);
-    resp[4] = (uint8_t)((dms >> 8U) & 0xFFU);
+    resp[3] = (uint8_t)(d0 & 0xFFU);
+    resp[4] = (uint8_t)((d0 >> 8U) & 0xFFU);
     send_reply_frame(0xA9U, resp, 5U);
     return;
   }
 
-  /* op=1: DMA-read frame p[1] from U9 straight into 128x128 framebuffer & mark dirty */
+  /* op=1: DMA-read frame p[1] from U9 into framebuffer & reply [0x00, idx, delay_lo, delay_hi] */
   if (op == 1U && plen >= 2U) {
     uint8_t idx = p[1];
-    uint8_t resp[2];
+    uint8_t resp[4];
     if (idx >= U9_GIF_MAX_FRAMES) {
       resp[0] = 0x02U;
       resp[1] = idx;
@@ -320,9 +339,16 @@ static void handle_gif_play_cmd(volatile uint8_t const *p, uint16_t plen)
     uint32_t faddr = U9_GIF_DATA_ADDR + ((uint32_t)idx * U9_GIF_FRAME_BYTES);
     u9_read_chunked((void *)FB_BASE_ADDR, faddr, U9_GIF_FRAME_BYTES);
     *(volatile uint8_t *)FB_DIRTY_ADDR = 1U;
+    uint16_t dms = 100U;
+    if (*(volatile uint32_t *)U9_GIF_CACHE_MAGIC == U9_GIF_CACHE_VAL) {
+      volatile uint16_t const *cache = (volatile uint16_t const *)U9_GIF_DELAY_CACHE;
+      dms = clamp_gif_delay(cache[idx]);
+    }
     resp[0] = 0x00U;
     resp[1] = idx;
-    send_reply_frame(0xA9U, resp, 2U);
+    resp[2] = (uint8_t)(dms & 0xFFU);
+    resp[3] = (uint8_t)((dms >> 8U) & 0xFFU);
+    send_reply_frame(0xA9U, resp, 4U);
     return;
   }
 
@@ -335,7 +361,7 @@ static void send_patch_ver(void)
   uint8_t ver[3];
   ver[0] = 0x00U;
   ver[1] = 0x01U;
-  ver[2] = 0x03U; /* v1.3: U9 custom GIF flasher (0x28) + player (0x29) */
+  ver[2] = 0x04U; /* v1.4: U9 GIF flasher (0x28) + per-frame delay GIF player (0x29) */
   send_reply_frame(0xA5U, ver, 3U);
 }
 

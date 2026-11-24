@@ -578,15 +578,23 @@ def test_gif_tools_and_bundled_funny_gifs(tmp_path: pathlib.Path) -> None:
     for name in expected:
         p = gif_dir / name
         assert p.is_file(), f"Missing bundled GIF {p}"
-        frames, delay_ms = tk75_tft_gif.load_gif_frames(p)
+        frames, delays = tk75_tft_gif.load_gif_frames(p)
         assert 1 <= len(frames) <= tk75_tft_gif.U9_GIF_MAX_FRAMES
+        assert len(delays) == len(frames)
         assert all(len(f) == tk75_tft_gif.U9_GIF_FRAME_BYTES for f in frames)
-        assert 33 <= delay_ms <= 2000
+        assert all(33 <= d <= 10000 for d in delays)
 
-    hdr = tk75_tft_gif.build_gif_header("funny_eyes", 30, 170, 0x12345678)
-    assert len(hdr) == 32
+    hdr = tk75_tft_gif.build_gif_header("funny_eyes", 3, [1900, 70, 90], 0x12345678)
+    assert len(hdr) == tk75_tft_gif.U9_GIF_HDR_SIZE
     parsed = tk75_tft_gif.parse_gif_header(hdr)
-    assert parsed == {"version": 1, "frame_count": 30, "delay_ms": 170, "crc32": 0x12345678, "name": "funny_eyes"}
+    assert parsed == {
+        "version": 2,
+        "frame_count": 3,
+        "delay_ms": 1900,
+        "frame_delays_ms": [1900, 70, 90],
+        "crc32": 0x12345678,
+        "name": "funny_eyes",
+    }
     assert tk75_tft_gif.parse_gif_header(b"\xFF" * 32) is None
 
     assert tk75_tft_gif.main(["upload", str(gif_dir / "funny_eyes.gif"), "--dry-run"]) == 0

@@ -20,7 +20,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "assets" / "gifs"
 
 
-def _save_gif(frames: list[Image.Image], path: pathlib.Path, duration_ms: int) -> None:
+def _save_gif(frames: list[Image.Image], path: pathlib.Path, duration_ms: int | list[int]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     pal_frames = [f.convert("P", palette=Image.Palette.ADAPTIVE, colors=255) for f in frames]
     pal_frames[0].save(
@@ -32,7 +32,11 @@ def _save_gif(frames: list[Image.Image], path: pathlib.Path, duration_ms: int) -
         disposal=2,
         optimize=False,
     )
-    print(f"Generated {path.relative_to(ROOT)} ({len(frames)} frames, {duration_ms}ms, {path.stat().st_size} B)")
+    if isinstance(duration_ms, list):
+        dur_desc = f"{sum(duration_ms)}ms total ({min(duration_ms)}..{max(duration_ms)}ms/f)"
+    else:
+        dur_desc = f"{duration_ms}ms"
+    print(f"Generated {path.relative_to(ROOT)} ({len(frames)} frames, {dur_desc}, {path.stat().st_size} B)")
 
 
 def _draw_simple_eye(
@@ -71,59 +75,51 @@ def _draw_simple_eye(
 
 
 def gen_funny_eyes() -> None:
-    """31-frame smooth, slow, eased moving / side-eye / blinking eyes on pitch-black background."""
+    """31-frame natural eyes: calmly looks right at you, stays, blinks, then smoothly glances around."""
     frames: list[Image.Image] = []
+    durations: list[int] = []
     lcx, rcx, cy = 36, 92, 64
 
-    # 31 unique smooth frames @ 165 ms (~5.1s calm, unhurried loop):
-    # Every motion glides in small 2-4 px ease-in-out steps with gentle holds & smooth 3-frame blinks.
-    #  0-1: calm center
-    #  2-5: smooth glide right (2 -> 6 -> 10 -> 12)
-    #  6-7: calm hold right
-    #  8-10: smooth 3-frame blink (closing -> shut -> opening)
-    # 11-15: smooth glide right -> left (8 -> 3 -> -3 -> -8 -> -12)
-    # 16-17: calm hold left
-    # 18-19: eyelids smoothly narrow into side-eye
-    # 20-24: slow sly side-eye glide left -> right (-11 -> -6 -> 0 -> 6 -> 11)
-    # 25-26: hold side-eye right -> eyelids smoothly open
-    # 27-28: smooth glide back to center (7 -> 3)
-    # 29-30: calm blink (shut -> opening into frame 0)
+    # Uses true per-frame GIF durations (supported natively by U24 v1.4+):
+    #   - Long natural eye-contact holds (1.7-1.9s) use just 1 frame each
+    #   - Glides & blinks run silky smooth at 65-85 ms (~13-15 FPS) with 2-4 px ease steps!
+    # Total calm cycle: ~11.1 seconds in 31 frames.
     keyframes = [
-        # (dx, dy, top_lid, bot_lid, l_tilt, r_tilt, blink_bar)
-        (0.0,   0.0,  0,  0,  0,  0, False),  # 0: calm center
-        (0.6,  -0.3,  0,  0,  0,  0, False),  # 1: hold center (micro-drift prevents GIF frame merge)
-        (2.5,  -0.6,  0,  0,  0,  0, False),  # 2: ease right 1
-        (6.0,  -1.2,  0,  0,  0,  0, False),  # 3: ease right 2
-        (9.5,  -1.7,  0,  0,  0,  0, False),  # 4: ease right 3
-        (11.8, -2.0,  0,  0,  0,  0, False),  # 5: arrive right
-        (12.2, -2.0,  0,  0,  0,  0, False),  # 6: hold right 1
-        (11.6, -1.8,  0,  0,  0,  0, False),  # 7: hold right 2
-        (10.5, -1.2, 16, 12,  0,  0, False),  # 8: blink closing
-        (0.0,   0.0,  0,  0,  0,  0, True),   # 9: blink shut
-        (9.0,  -0.8, 15, 11,  0,  0, False),  # 10: blink opening
-        (7.5,  -0.5,  0,  0,  0,  0, False),  # 11: ease left 1
-        (2.5,   0.0,  0,  0,  0,  0, False),  # 12: ease left 2
-        (-3.0, -0.5,  0,  0,  0,  0, False),  # 13: ease left 3
-        (-8.0, -1.2,  0,  0,  0,  0, False),  # 14: ease left 4
-        (-11.5,-1.8,  0,  0,  0,  0, False),  # 15: arrive left
-        (-12.1,-1.8,  0,  0,  0,  0, False),  # 16: hold left 1
-        (-11.6,-1.2,  0,  0,  0,  0, False),  # 17: hold left 2
-        (-11.2, 0.5, 11,  8, -1,  1, False),  # 18: narrow lids 1
-        (-11.0, 1.5, 20, 14, -3,  3, False),  # 19: narrow lids 2 (side-eye left)
-        (-11.4, 2.0, 22, 15, -3,  3, False),  # 20: hold side-eye left
-        (-6.5,  2.0, 22, 15, -3,  3, False),  # 21: slow side-eye slide 1
-        (0.0,   2.0, 22, 15, -3,  3, False),  # 22: slow side-eye slide 2
-        (6.5,   2.0, 22, 15, -3,  3, False),  # 23: slow side-eye slide 3
-        (11.0,  2.0, 22, 15, -3,  3, False),  # 24: arrive side-eye right
-        (11.6,  2.0, 22, 15, -3,  3, False),  # 25: hold side-eye right
-        (10.0,  0.8, 11,  8, -1,  1, False),  # 26: lids opening
-        (6.5,   0.0,  0,  0,  0,  0, False),  # 27: ease to center 1
-        (2.5,   0.0,  0,  0,  0,  0, False),  # 28: ease to center 2
-        (0.0,   0.0,  0,  0,  0,  0, True),   # 29: calm blink shut
-        (0.0,   0.0, 15, 11,  0,  0, False),  # 30: blink opening into center
+        # (dur_ms, dx, dy, top_lid, bot_lid, l_tilt, r_tilt, blink_bar)
+        (1900,  0.0,  0.0,  0,  0,  0,  0, False),  # 0: calmly look right at you (1.9s!)
+        (  70,  0.0,  0.0, 16, 12,  0,  0, False),  # 1: smooth blink closing
+        (  90,  0.0,  0.0,  0,  0,  0,  0, True),   # 2: blink shut
+        (  70,  0.0,  0.0, 14, 10,  0,  0, False),  # 3: smooth blink opening
+        ( 850,  0.0,  0.0,  0,  0,  0,  0, False),  # 4: stay looking at you a bit more (0.85s)
+        (  65,  2.2, -0.4,  0,  0,  0,  0, False),  # 5: silky glide right 1
+        (  65,  5.2, -0.9,  0,  0,  0,  0, False),  # 6: silky glide right 2
+        (  65,  8.4, -1.4,  0,  0,  0,  0, False),  # 7: silky glide right 3
+        (  65, 10.8, -1.8,  0,  0,  0,  0, False),  # 8: silky glide right 4
+        (1350, 12.0, -2.0,  0,  0,  0,  0, False),  # 9: hold looking right (1.35s)
+        (  65,  9.2, -1.5,  0,  0,  0,  0, False),  # 10: silky glide left 1
+        (  65,  5.0, -0.8,  0,  0,  0,  0, False),  # 11: silky glide left 2
+        (  65,  0.0,  0.0,  0,  0,  0,  0, False),  # 12: pass center
+        (  65, -5.0, -0.8,  0,  0,  0,  0, False),  # 13: silky glide left 4
+        (  65, -9.2, -1.5,  0,  0,  0,  0, False),  # 14: silky glide left 5
+        (1350,-12.0, -2.0,  0,  0,  0,  0, False),  # 15: hold looking left (1.35s)
+        (  65, -9.0, -1.2,  0,  0,  0,  0, False),  # 16: silky return to you 1
+        (  65, -4.5, -0.5,  0,  0,  0,  0, False),  # 17: silky return to you 2
+        (1700,  0.0,  0.0,  0,  0,  0,  0, False),  # 18: calmly look straight at you again (1.7s!)
+        (  75, -3.5,  0.6,  9,  6, -1,  1, False),  # 19: eyelids narrow into side-eye 1
+        (  75, -8.0,  1.4, 17, 12, -2,  2, False),  # 20: eyelids narrow into side-eye 2
+        (1100,-11.0,  2.0, 22, 15, -3,  3, False),  # 21: hold sly side-eye left (1.1s)
+        (  85, -7.0,  2.0, 22, 15, -3,  3, False),  # 22: slow side-eye slide 1
+        (  85, -2.0,  2.0, 22, 15, -3,  3, False),  # 23: slow side-eye slide 2
+        (  85,  3.5,  2.0, 22, 15, -3,  3, False),  # 24: slow side-eye slide 3
+        (  85,  8.0,  2.0, 22, 15, -3,  3, False),  # 25: slow side-eye slide 4
+        (1150, 11.0,  2.0, 22, 15, -3,  3, False),  # 26: hold sly side-eye right (1.15s)
+        (  75,  8.5,  1.0, 14, 10, -2,  2, False),  # 27: eyelids smoothly open 1
+        (  70,  5.0,  0.3,  6,  4, -1,  1, False),  # 28: eyelids smoothly open 2
+        (  70,  2.0,  0.0,  0,  0,  0,  0, False),  # 29: settle back to center
+        (  90,  0.0,  0.0,  0,  0,  0,  0, True),   # 30: gentle blink into frame 0 (look at you)
     ]
 
-    for dx, dy, tl, bl, lt, rt, blink_bar in keyframes:
+    for dur_ms, dx, dy, tl, bl, lt, rt, blink_bar in keyframes:
         img = Image.new("RGB", (128, 128), (0, 0, 0))
         d = ImageDraw.Draw(img)
         if blink_bar:
@@ -133,8 +129,9 @@ def gen_funny_eyes() -> None:
             _draw_simple_eye(d, lcx, cy, dx, dy, top_lid=tl, bot_lid=bl, brow_tilt=lt)
             _draw_simple_eye(d, rcx, cy, dx, dy, top_lid=tl, bot_lid=bl, brow_tilt=rt)
         frames.append(img)
+        durations.append(dur_ms)
 
-    _save_gif(frames, OUT_DIR / "funny_eyes.gif", duration_ms=165)
+    _save_gif(frames, OUT_DIR / "funny_eyes.gif", duration_ms=durations)
 
 
 def gen_bongo_cat() -> None:
