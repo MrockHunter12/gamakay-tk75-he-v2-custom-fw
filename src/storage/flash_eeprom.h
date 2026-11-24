@@ -19,6 +19,13 @@ extern "C" {
 #define TK75_MACRO_BUF_BYTES  2048U
 #define TK75_EEPROM_SLOTS     4U
 
+typedef enum {
+  TFT_THEME_PIXEL      = 0U, /* Obsidian Cyber (Cyan/Mint) */
+  TFT_THEME_STOCK_PLUS = 1U, /* Modified GamaKay Stock+ Classic (Full Features) */
+  TFT_THEME_TERMINAL   = 2U, /* Retro Phosphor CRT Terminal */
+  TFT_THEME_COUNT      = 3U,
+} tft_theme_t;
+
 typedef struct {
   uint32_t magic;
   uint32_t seq;
@@ -70,12 +77,13 @@ typedef struct {
   uint8_t  rf_bt_slot;        /* 0=BT1, 1=BT2, 2=BT3 */
   uint8_t  rf_poll_rate_idx;  /* 0=1000Hz, 1=500Hz, 2=250Hz, 3=125Hz */
   uint8_t  mac_mode;          /* 0=Win/Linux, 1=macOS */
-  uint8_t  sleep_timeout_min; /* Battery idle sleep minutes (0=disabled, default 5) */
+  uint8_t  sleep_timeout_min; /* Deep energy-save timeout minutes: RGB+TFT off (0=disabled, default 5) */
   uint8_t  macro_speed_idx;   /* 1=FAST(2ms/0.25x), 2/0=NORM(10ms/1x), 3=MED(25ms/2x), 4=SLOW(50ms/4x), 5=SAFE(100ms/8x) */
   uint8_t  tft_screensaver;   /* 0=Off, 1=Pixel-art idle clock & system info screensaver */
   uint8_t  caps_side_enabled; /* 0=Off, 1=Trigger sidelight ON while Caps Lock active */
   uint8_t  caps_side_effect;  /* 0=Solid, 1=Breathing, 2=Rainbow Wave, 3=Alert Blink, 4=Scanner */
-  uint8_t  reserved[2];
+  uint8_t  tft_theme;         /* 0=Pixel Cyber, 1=Stock+ Classic, 2=Phosphor Terminal */
+  uint8_t  reserved;
   uint16_t hall_user_span_adc[HALL_SLOT_COUNT]; /* 0=factory cal, else user-calibrated full-travel ADC span */
 
   uint32_t crc32;

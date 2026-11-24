@@ -4,22 +4,6 @@
 #include "rgb_effects.h"
 #include <string.h>
 
-/* Minimal Pixel-Art Palette (RGB565) */
-#define COL_BG      0x0862U /* #0B0F17 Deep Obsidian */
-#define COL_CARD    0x10E5U /* #151C2C Dark Slate */
-#define COL_BORDER  0x29AAU /* #2A3550 Crisp Pixel Bevel */
-#define COL_DIM     0x2127U /* #202638 Cavity / Slider Track */
-#define COL_CYAN    0x3F5FU /* #38E8FF Primary Accent */
-#define COL_MINT    0x37D3U /* #36F998 Actuated / Good / Active */
-#define COL_AMBER   0xFDC6U /* #FFB830 Edit / Rapid Trigger / Warm */
-#define COL_CORAL   0xF9C9U /* #FF3B4B Alert / Low Battery */
-#define COL_MUTED   0x63B1U /* #64748B Muted Label */
-#define COL_WHITE   0xFFDFU /* #F8FAFC Crisp White */
-#define COL_KEYCAP  0x4A8EU /* #4B5570 Switch Keycap Body */
-#define COL_KEYTOP  0x8474U /* #858FA4 Switch Keycap Highlight */
-#define COL_SPRING  0x94D6U /* #949DB0 Switch Coil Spring */
-#define COL_HOUSING 0x31A9U /* #32364A Switch Housing Wall */
-
 #define PROBE_INTERVAL_MS   100U
 #define ACK_TIMEOUT_MS      150U
 #define ANIM_PERIOD_MS      28U
@@ -28,10 +12,121 @@
 #define PLUNGER_MAX_PX      18U
 #define MAX_BATCH_RECTS     15U
 
+/* Theme descriptor: distinct palette + structural chrome style per skin */
 typedef struct {
-  uint8_t  count;
-  uint8_t  buf[2U + MAX_BATCH_RECTS * 6U];
+  char const *name;         /* Fixed 6-char menu display label */
+  uint16_t    bg;
+  uint16_t    card;
+  uint16_t    border;
+  uint16_t    dim;
+  uint16_t    accent;       /* Primary accent */
+  uint16_t    good;         /* Actuated / ON / Active */
+  uint16_t    warn;         /* Edit / Rapid Trigger / Warm */
+  uint16_t    alert;        /* Low Battery / Caps / Rec */
+  uint16_t    muted;        /* Secondary label */
+  uint16_t    text;         /* Primary bright text */
+  uint16_t    keycap;
+  uint16_t    keytop;
+  uint16_t    spring;
+  uint16_t    housing;
+  uint16_t    header_bg;    /* Menu header fill when unfocused */
+  uint16_t    header_focus; /* Menu header fill when tab bar focused */
+  uint16_t    focus_bg;     /* Focused menu row interior fill */
+  uint16_t    cursor_fg;    /* Text color on accent-filled pills/cursors */
+  uint8_t     id;           /* tft_theme_t */
+} hud_theme_t;
+
+static hud_theme_t const k_themes[TFT_THEME_COUNT] = {
+  /* 0: PIXEL (Obsidian Cyber) */
+  {
+    .name         = "PIXEL ",
+    .bg           = 0x0862U, /* #0B0F17 Deep Obsidian */
+    .card         = 0x10E5U, /* #151C2C Dark Slate */
+    .border       = 0x29AAU, /* #2A3550 Crisp Pixel Bevel */
+    .dim          = 0x2127U, /* #202638 Cavity / Slider Track */
+    .accent       = 0x3F5FU, /* #38E8FF Electric Cyan */
+    .good         = 0x37D3U, /* #36F998 Neon Mint */
+    .warn         = 0xFDC6U, /* #FFB830 Warm Amber */
+    .alert        = 0xF9C9U, /* #FF3B4B Coral Alert */
+    .muted        = 0x63B1U, /* #64748B Muted Label */
+    .text         = 0xFFDFU, /* #F8FAFC Crisp White */
+    .keycap       = 0x4A8EU,
+    .keytop       = 0x8474U,
+    .spring       = 0x94D6U,
+    .housing      = 0x31A9U,
+    .header_bg    = 0x10E5U,
+    .header_focus = 0x29AAU,
+    .focus_bg     = 0x10E5U,
+    .cursor_fg    = 0x0862U,
+    .id           = (uint8_t)TFT_THEME_PIXEL,
+  },
+  /* 1: STOCK+ (Modified GamaKay Stock Classic with ALL custom features) */
+  {
+    .name         = "STOCK+",
+    .bg           = 0x18E4U, /* #181C20 Authentic Stock Charcoal */
+    .card         = 0x2146U, /* #222830 Graphite Panel */
+    .border       = 0x3A29U, /* #3A444D Steel Edge */
+    .dim          = 0x10A3U, /* #121518 Recessed Track */
+    .accent       = 0x353FU, /* #33A6FF GamaKay Electric Blue */
+    .good         = 0x2EEBU, /* #28DD58 Emerald Good */
+    .warn         = 0xFBC3U, /* #FF7818 GamaKay Signature Orange */
+    .alert        = 0xF986U, /* #FF3030 Crimson Alert */
+    .muted        = 0x94B2U, /* #949694 Crisp Silver Grey */
+    .text         = 0xFFFFU, /* #FFFFFF Pure White */
+    .keycap       = 0x4A6AU,
+    .keytop       = 0x9CF4U,
+    .spring       = 0xAD76U,
+    .housing      = 0x2987U,
+    .header_bg    = 0x1969U, /* Deep Navy Steel Banner */
+    .header_focus = 0x353FU, /* Active Electric Blue Banner */
+    .focus_bg     = 0x21ECU, /* Elevated Blue-Slate Selection Bar */
+    .cursor_fg    = 0x18E4U,
+    .id           = (uint8_t)TFT_THEME_STOCK_PLUS,
+  },
+  /* 2: TERM (Retro Phosphor CRT Terminal) */
+  {
+    .name         = "TERM  ",
+    .bg           = 0x0020U, /* #000400 Pitch CRT Black */
+    .card         = 0x08C1U, /* #081808 Deep Phosphor Tube */
+    .border       = 0x1364U, /* #106C20 CRT Grid Green */
+    .dim          = 0x0861U, /* #080C08 Unlit Segment */
+    .accent       = 0x37ECU, /* #33FF66 Bright Phosphor Green */
+    .good         = 0x9FF7U, /* #99FFBB High-Glow Mint */
+    .warn         = 0xFD40U, /* #FFA800 Amber CRT Highlight */
+    .alert        = 0xF9A8U, /* #FF3440 CRT Alert Red */
+    .muted        = 0x2C85U, /* #289028 Dim Phosphor */
+    .text         = 0x9FF7U, /* #99FFBB Phosphor Text */
+    .keycap       = 0x12A3U,
+    .keytop       = 0x37ECU,
+    .spring       = 0x2C85U,
+    .housing      = 0x0A02U,
+    .header_bg    = 0x08C1U,
+    .header_focus = 0x1364U,
+    .focus_bg     = 0x0902U,
+    .cursor_fg    = 0x0020U,
+    .id           = (uint8_t)TFT_THEME_TERMINAL,
+  },
+};
+
+/* Configurable Deep Energy Save presets (minutes; 0 = disabled) */
+#define ECO_PRESET_COUNT 7U
+static uint8_t const k_eco_presets[ECO_PRESET_COUNT] = { 0U, 1U, 2U, 5U, 10U, 15U, 30U };
+
+typedef struct {
+  uint8_t count;
+  uint8_t buf[2U + MAX_BATCH_RECTS * 6U];
 } rect_batch_t;
+
+static uint8_t normalize_theme_id(uint8_t raw)
+{
+  return (raw < (uint8_t)TFT_THEME_COUNT) ? raw : (uint8_t)TFT_THEME_PIXEL;
+}
+
+static hud_theme_t const *active_theme(pixel_hud_t const *hud)
+{
+  uint8_t id = (hud != NULL && hud->cfg != NULL) ? normalize_theme_id(hud->cfg->tft_theme) : 0U;
+  return &k_themes[id];
+}
 
 static bool enqueue_op(pixel_hud_t *hud, uint8_t cmd, uint8_t const *data, uint8_t len)
 {
@@ -133,6 +228,16 @@ static void fmt_u8_pct(uint8_t pct, char out[5])
   }
 }
 
+static void fmt_u8_zero2(uint8_t v, char out[3])
+{
+  if (v > 99U) {
+    v = 99U;
+  }
+  out[0] = (char)('0' + (v / 10U));
+  out[1] = (char)('0' + (v % 10U));
+  out[2] = '\0';
+}
+
 static void fmt_mm_tenths(uint16_t tenths, char out[6])
 {
   if (tenths > 99U) {
@@ -157,12 +262,34 @@ static void fmt_wpm3(uint16_t wpm, char out[4])
   out[3] = '\0';
 }
 
+static void fmt_eco_timeout(uint8_t mins, char out[7])
+{
+  if (mins == 0U) {
+    memcpy(out, "OFF   ", 7U);
+    return;
+  }
+  if (mins >= 10U) {
+    out[0] = (char)('0' + ((mins / 10U) % 10U));
+    out[1] = (char)('0' + (mins % 10U));
+    memcpy(&out[2], " MIN", 5U);
+  } else {
+    out[0] = (char)('0' + mins);
+    memcpy(&out[1], " MIN ", 6U);
+  }
+}
+
+static char const *rf_rate_short_name(uint8_t idx)
+{
+  static char const *const k_rates[4] = { "1000Hz", "500Hz ", "250Hz ", "125Hz " };
+  return (idx < 4U) ? k_rates[idx] : k_rates[0];
+}
+
 static uint8_t u8_to_pct10(uint8_t val, uint8_t enabled)
 {
   if (enabled == 0U || val == 0U) {
     return 0U;
   }
-  uint32_t pct = (((uint32_t)val * 100U) + 127U) / 255U;
+  uint32_t pct     = (((uint32_t)val * 100U) + 127U) / 255U;
   uint32_t rounded = ((pct + 5U) / 10U) * 10U;
   if (rounded == 0U) {
     rounded = 10U;
@@ -197,40 +324,38 @@ static uint32_t compute_header_hash(pixel_hud_t const *hud)
 }
 
 /* Draw pixel-art power-state indicator + battery icon (fits <= 12 rects in 1 atomic batch):
- *   - USB Charging  (vbus && charging):  Amber/White lightning bolt + Amber battery outline/fill
- *   - USB Full/Ext  (vbus && !charging): Cyan USB plug icon + Cyan outline + Mint fill
- *   - Battery Mode  (!vbus):             Clean battery icon (no bolt/plug), Mint (or Coral <=20%) */
-static uint16_t batch_add_battery_widget(rect_batch_t *b, uint8_t y0, pixel_hud_live_t const *l)
+ *   - USB Charging  (vbus && charging):  Warn/Text lightning bolt + Warn battery outline/fill
+ *   - USB Full/Ext  (vbus && !charging): Accent USB plug icon + Accent outline + Good fill
+ *   - Battery Mode  (!vbus):             Clean battery icon, Good (or Alert <=20%) */
+static uint16_t batch_add_battery_widget(rect_batch_t *b, uint8_t y0,
+                                         pixel_hud_live_t const *l, hud_theme_t const *th)
 {
-  bool     usb_chg  = l->vbus_present && l->charging;
-  bool     usb_full = l->vbus_present && !l->charging;
-  uint16_t batt_col = (l->battery_pct <= 20U && !usb_chg) ? COL_CORAL
-                    : (usb_chg ? COL_AMBER : COL_MINT);
-  uint16_t frame_col = usb_chg ? COL_AMBER : (usb_full ? COL_CYAN : COL_MUTED);
+  bool     usb_chg   = l->vbus_present && l->charging;
+  bool     usb_full  = l->vbus_present && !l->charging;
+  uint16_t batt_col  = (l->battery_pct <= 20U && !usb_chg) ? th->alert
+                     : (usb_chg ? th->warn : th->good);
+  uint16_t frame_col = usb_chg ? th->warn : (usb_full ? th->accent : th->muted);
 
   if (usb_chg) {
-    /* Pixel-art lightning bolt (x=66..71, y=y0..y0+9) */
-    batch_add(b, 69U, (uint8_t)(y0 + 0U), 3U, 2U, COL_AMBER);
-    batch_add(b, 67U, (uint8_t)(y0 + 2U), 4U, 2U, COL_WHITE);
-    batch_add(b, 66U, (uint8_t)(y0 + 4U), 6U, 2U, COL_AMBER);
-    batch_add(b, 68U, (uint8_t)(y0 + 6U), 4U, 2U, COL_WHITE);
-    batch_add(b, 67U, (uint8_t)(y0 + 8U), 3U, 2U, COL_AMBER);
+    batch_add(b, 69U, (uint8_t)(y0 + 0U), 3U, 2U, th->warn);
+    batch_add(b, 67U, (uint8_t)(y0 + 2U), 4U, 2U, th->text);
+    batch_add(b, 66U, (uint8_t)(y0 + 4U), 6U, 2U, th->warn);
+    batch_add(b, 68U, (uint8_t)(y0 + 6U), 4U, 2U, th->text);
+    batch_add(b, 67U, (uint8_t)(y0 + 8U), 3U, 2U, th->warn);
   } else if (usb_full) {
-    /* Pixel-art USB power plug icon (x=64..72, y=y0+2..y0+7) */
-    batch_add(b, 64U, (uint8_t)(y0 + 4U), 2U, 2U, COL_CYAN);
-    batch_add(b, 66U, (uint8_t)(y0 + 2U), 4U, 6U, COL_CYAN);
-    batch_add(b, 70U, (uint8_t)(y0 + 3U), 3U, 1U, COL_WHITE);
-    batch_add(b, 70U, (uint8_t)(y0 + 6U), 3U, 1U, COL_WHITE);
-    batch_add(b, 67U, (uint8_t)(y0 + 4U), 2U, 2U, COL_WHITE);
+    batch_add(b, 64U, (uint8_t)(y0 + 4U), 2U, 2U, th->accent);
+    batch_add(b, 66U, (uint8_t)(y0 + 2U), 4U, 6U, th->accent);
+    batch_add(b, 70U, (uint8_t)(y0 + 3U), 3U, 1U, th->text);
+    batch_add(b, 70U, (uint8_t)(y0 + 6U), 3U, 1U, th->text);
+    batch_add(b, 67U, (uint8_t)(y0 + 4U), 2U, 2U, th->text);
   }
 
-  /* Pixel-art battery casing @ (75, y0), 17x10 */
-  batch_add(b, 75U, y0, 15U, 1U, frame_col);                 /* top */
-  batch_add(b, 75U, (uint8_t)(y0 + 9U), 15U, 1U, frame_col); /* bottom */
-  batch_add(b, 75U, y0, 1U, 10U, frame_col);                 /* left */
-  batch_add(b, 89U, y0, 1U, 10U, frame_col);                 /* right */
-  batch_add(b, 90U, (uint8_t)(y0 + 3U), 2U, 4U, frame_col);  /* tip */
-  batch_add(b, 77U, (uint8_t)(y0 + 2U), 11U, 6U, COL_DIM);   /* empty interior */
+  batch_add(b, 75U, y0, 15U, 1U, frame_col);
+  batch_add(b, 75U, (uint8_t)(y0 + 9U), 15U, 1U, frame_col);
+  batch_add(b, 75U, y0, 1U, 10U, frame_col);
+  batch_add(b, 89U, y0, 1U, 10U, frame_col);
+  batch_add(b, 90U, (uint8_t)(y0 + 3U), 2U, 4U, frame_col);
+  batch_add(b, 77U, (uint8_t)(y0 + 2U), 11U, 6U, th->dim);
   uint8_t fill_w = (uint8_t)(((uint32_t)l->battery_pct * 11U + 50U) / 100U);
   if (fill_w > 11U) fill_w = 11U;
   if (fill_w > 0U) {
@@ -247,56 +372,74 @@ static uint8_t compute_badges_hash(pixel_hud_t const *hud)
                    ((c->hall_socd_mode & 3U) << 1U) |
                    (((l->host_leds & 2U) != 0U) ? 8U : 0U) |
                    (c->mac_mode ? 16U : 0U) |
-                   (c->win_lock ? 32U : 0U));
+                   (c->win_lock ? 32U : 0U) |
+                   ((c->sleep_timeout_min > 0U) ? 64U : 0U));
 }
 
-/* Draw top status bar (y = 0..19) */
+/* Draw top status bar (y = 0..19) styled per active theme */
 static void draw_home_header(pixel_hud_t *hud)
 {
-  pixel_hud_live_t const *l = &hud->live;
+  pixel_hud_live_t const *l  = &hud->live;
+  hud_theme_t const      *th = active_theme(hud);
+  uint16_t hbg = th->header_bg;
+
   rect_batch_t b;
   batch_init(&b);
-
-  /* Header background + 1px bottom border */
-  batch_add(&b, 0U, 0U, 128U, 18U, COL_CARD);
-  batch_add(&b, 0U, 18U, 128U, 1U, COL_BORDER);
-
-  /* Pixel-art power indicator (USB charging bolt / USB full plug / battery) + battery icon */
-  uint16_t batt_col = batch_add_battery_widget(&b, 4U, l);
+  batch_add(&b, 0U, 0U, 128U, 18U, hbg);
+  if (th->id == TFT_THEME_STOCK_PLUS) {
+    batch_add(&b, 0U, 17U, 128U, 2U, th->accent); /* Classic GamaKay top blue ribbon rule */
+  } else if (th->id == TFT_THEME_TERMINAL) {
+    batch_add(&b, 0U, 17U, 128U, 1U, th->accent);
+    batch_add(&b, 0U, 18U, 128U, 1U, th->bg);
+    batch_add(&b, 0U, 19U, 128U, 1U, th->border);
+  } else {
+    batch_add(&b, 0U, 18U, 128U, 1U, th->border);
+  }
+  uint16_t batt_col = batch_add_battery_widget(&b, 4U, l, th);
   batch_submit(hud, &b, false);
 
   if (l->macro_recording) {
     char rec_str[7] = { 'R', 'E', 'C', ' ', 'M', (char)('0' + (l->macro_rec_slot % 10U)), '\0' };
-    q_text(hud, 4U, 3U, rec_str, COL_CORAL, COL_CARD, 1U, false, false);
+    q_text(hud, 4U, 3U, rec_str, th->alert, hbg, 1U, false, false);
   } else if (l->macro_speed_toast != 0U) {
-    q_text(hud, 4U, 3U, macro_player_speed_label(l->macro_speed_toast), COL_AMBER, COL_CARD, 1U, false, false);
+    q_text(hud, 4U, 3U, macro_player_speed_label(l->macro_speed_toast), th->warn, hbg, 1U, false, false);
   } else {
-    char mode_str[4] = "USB";
-    uint16_t mode_col = COL_CYAN;
-    if (l->conn_mode == 1U) {
-      mode_str[0] = '2'; mode_str[1] = '.'; mode_str[2] = '4';
-      mode_col = COL_MINT;
-    } else if (l->conn_mode == 2U) {
-      mode_str[0] = 'B'; mode_str[1] = 'T'; mode_str[2] = (char)('1' + (l->bt_slot % 3U));
-      mode_col = COL_AMBER;
+    char mode_str[5];
+    uint16_t mode_col = th->accent;
+    uint8_t  x_off    = 0U;
+    if (th->id == TFT_THEME_TERMINAL) {
+      mode_str[0] = '>';
+      x_off       = 1U;
     }
-    q_text(hud, 4U, 3U, mode_str, mode_col, COL_CARD, 1U, false, false);
+    if (l->conn_mode == 1U) {
+      mode_str[x_off + 0U] = '2'; mode_str[x_off + 1U] = '.'; mode_str[x_off + 2U] = '4';
+      mode_col = th->good;
+    } else if (l->conn_mode == 2U) {
+      mode_str[x_off + 0U] = 'B'; mode_str[x_off + 1U] = 'T';
+      mode_str[x_off + 2U] = (char)('1' + (l->bt_slot % 3U));
+      mode_col = th->warn;
+    } else {
+      mode_str[x_off + 0U] = 'U'; mode_str[x_off + 1U] = 'S'; mode_str[x_off + 2U] = 'B';
+      mode_col = th->accent;
+    }
+    mode_str[x_off + 3U] = '\0';
+    q_text(hud, 4U, 3U, mode_str, mode_col, hbg, 1U, false, false);
 
     char lay_str[3] = { 'L', (char)('0' + (l->active_layer & 3U)), '\0' };
-    q_text(hud, 28U, 3U, lay_str, COL_WHITE, COL_CARD, 1U, false, false);
+    q_text(hud, (uint8_t)(28U + (x_off * 6U)), 3U, lay_str, th->text, hbg, 1U, false, false);
   }
 
   char bstr[5];
   fmt_u8_pct(l->battery_pct, bstr);
-  q_text(hud, 95U, 3U, bstr, batt_col, COL_CARD, 1U, false, false);
+  q_text(hud, 95U, 3U, bstr, batt_col, hbg, 1U, false, false);
 
   hud->prev_header_hash = compute_header_hash(hud);
 }
 
-/* Draw pixel-art animated Hall-effect switch inside left card (x=4..57, y=23..107)
- * Packed into 1 single atomic 0x26 batch packet for silky-smooth, tear-free motion! */
+/* Draw pixel-art animated Hall-effect switch inside left card (PIXEL & TERMINAL themes) */
 static void draw_switch_animation(pixel_hud_t *hud, uint8_t dy, bool actuated, bool flush)
 {
+  hud_theme_t const *th = active_theme(hud);
   if (dy > PLUNGER_MAX_PX) {
     dy = PLUNGER_MAX_PX;
   }
@@ -304,45 +447,38 @@ static void draw_switch_animation(pixel_hud_t *hud, uint8_t dy, bool actuated, b
   if (act_px < 1U) act_px = 1U;
   if (act_px > PLUNGER_MAX_PX) act_px = PLUNGER_MAX_PX;
 
-  uint16_t stem_col   = actuated ? COL_MINT : ((dy > 0U) ? COL_CYAN : COL_KEYTOP);
-  uint16_t sensor_col = actuated ? COL_MINT : ((dy > 2U) ? COL_CYAN : COL_BORDER);
-  uint16_t cap_top    = actuated ? COL_MINT : ((dy > 0U) ? COL_CYAN : COL_KEYTOP);
+  uint16_t stem_col   = actuated ? th->good : ((dy > 0U) ? th->accent : th->keytop);
+  uint16_t sensor_col = actuated ? th->good : ((dy > 2U) ? th->accent : th->border);
+  uint16_t cap_top    = actuated ? th->good : ((dy > 0U) ? th->accent : th->keytop);
+  uint16_t interior   = (th->id == TFT_THEME_TERMINAL) ? th->bg : th->card;
 
   rect_batch_t b;
   batch_init(&b);
 
-  /* 1. Clear switch interior cleanly */
-  batch_add(&b, 6U, 25U, 50U, 80U, COL_CARD);
+  batch_add(&b, 6U, 25U, 50U, 80U, interior);
+  batch_add(&b, 11U, 56U, 40U, 45U, th->housing);
+  batch_add(&b, 15U, 59U, 32U, 38U, th->dim);
 
-  /* 2. Switch lower housing walls + dark cavity */
-  batch_add(&b, 11U, 56U, 40U, 45U, COL_HOUSING);
-  batch_add(&b, 15U, 59U, 32U, 38U, COL_DIM);
-
-  /* 3. Actuation threshold horizontal marker line inside housing */
   uint8_t act_y = (uint8_t)(60U + act_px);
-  batch_add(&b, 15U, act_y, 32U, 1U, actuated ? COL_MINT : COL_AMBER);
+  batch_add(&b, 15U, act_y, 32U, 1U, actuated ? th->good : th->warn);
 
-  /* 4. Pixel-art compressing coil spring (3 coils between stem bottom & sensor) */
   uint8_t spring_top = (uint8_t)(60U + dy);
   uint8_t spring_bot = 89U;
   if (spring_bot > spring_top + 4U) {
     uint8_t span = (uint8_t)(spring_bot - spring_top);
-    batch_add(&b, 24U, (uint8_t)(spring_top + (span / 4U)), 14U, 2U, COL_SPRING);
-    batch_add(&b, 22U, (uint8_t)(spring_top + (span / 2U)), 18U, 2U, COL_SPRING);
-    batch_add(&b, 24U, (uint8_t)(spring_top + ((span * 3U) / 4U)), 14U, 2U, COL_SPRING);
+    batch_add(&b, 24U, (uint8_t)(spring_top + (span / 4U)), 14U, 2U, th->spring);
+    batch_add(&b, 22U, (uint8_t)(spring_top + (span / 2U)), 18U, 2U, th->spring);
+    batch_add(&b, 24U, (uint8_t)(spring_top + ((span * 3U) / 4U)), 14U, 2U, th->spring);
   } else {
-    batch_add(&b, 22U, 86U, 18U, 3U, COL_SPRING);
+    batch_add(&b, 22U, 86U, 18U, 3U, th->spring);
   }
 
-  /* 5. Hall magnetic sensor block at bottom of switch cavity */
   batch_add(&b, 21U, 91U, 20U, 5U, sensor_col);
-
-  /* 6. Moving keycap top bevel + body + cross-stem plunger */
-  batch_add(&b, 13U, (uint8_t)(27U + dy), 36U, 4U, cap_top);    /* Keycap top highlight */
-  batch_add(&b, 10U, (uint8_t)(31U + dy), 42U, 14U, COL_KEYCAP); /* Keycap main block */
-  batch_add(&b, 14U, (uint8_t)(34U + dy), 6U, 2U, COL_WHITE);   /* Minimal pixel shine */
-  batch_add(&b, 25U, (uint8_t)(45U + dy), 12U, 15U, stem_col);  /* Moving stem plunger */
-  batch_add(&b, 28U, (uint8_t)(57U + dy), 6U, 3U, COL_WHITE);   /* Magnet tip */
+  batch_add(&b, 13U, (uint8_t)(27U + dy), 36U, 4U, cap_top);
+  batch_add(&b, 10U, (uint8_t)(31U + dy), 42U, 14U, th->keycap);
+  batch_add(&b, 14U, (uint8_t)(34U + dy), 6U, 2U, th->text);
+  batch_add(&b, 25U, (uint8_t)(45U + dy), 12U, 15U, stem_col);
+  batch_add(&b, 28U, (uint8_t)(57U + dy), 6U, 3U, th->text);
 
   batch_submit(hud, &b, flush);
   hud->anim_plunger_px = dy;
@@ -363,7 +499,6 @@ static uint16_t update_display_travel(pixel_hud_t *hud)
     return 0U;
   }
 
-  /* Light 1/2 EMA smoothing for crisp, jitter-free TFT animation */
   if (hud->smooth_travel_um == 0U) {
     hud->smooth_travel_um = raw;
   } else {
@@ -372,8 +507,31 @@ static uint16_t update_display_travel(pixel_hud_t *hud)
   return hud->smooth_travel_um;
 }
 
+static void get_display_hms(pixel_hud_t const *hud, uint8_t *h, uint8_t *m, uint8_t *s)
+{
+  pixel_hud_live_t const   *l = &hud->live;
+  tk75_persist_cfg_t const *c = hud->cfg;
+  if (l->rtc_valid) {
+    uint8_t hh = l->rtc_hour;
+    if (c->tft_clock_24h == 0U) {
+      hh = (uint8_t)(hh % 12U);
+      if (hh == 0U) hh = 12U;
+    }
+    *h = hh;
+    *m = l->rtc_min;
+    *s = l->rtc_sec;
+  } else {
+    uint32_t up = l->uptime_sec;
+    *h = (uint8_t)((up / 3600U) % 100U);
+    *m = (uint8_t)((up / 60U) % 60U);
+    *s = (uint8_t)(up % 60U);
+  }
+}
+
+/* Draw right-hand telemetry column on PIXEL & TERMINAL Home pages */
 static void draw_home_right_stats(pixel_hud_t *hud, bool force_all, bool flush)
 {
+  hud_theme_t const *th = active_theme(hud);
   uint16_t wpm = hud->live.wpm;
   uint16_t disp_travel = hud->travel_active ? hud->smooth_travel_um : 0U;
   uint16_t travel_t = (disp_travel > 0U)
@@ -383,9 +541,9 @@ static void draw_home_right_stats(pixel_hud_t *hud, bool force_all, bool flush)
   if (force_all || wpm != hud->prev_wpm) {
     char wbuf[4];
     fmt_wpm3(wpm, wbuf);
-    q_text(hud, 64U, 26U, wbuf, COL_WHITE, COL_BG, 2U, false, false);
+    q_text(hud, 64U, 26U, wbuf, th->text, th->bg, 2U, false, false);
     if (force_all) {
-      q_text(hud, 104U, 38U, "WPM", COL_MUTED, COL_BG, 1U, false, false);
+      q_text(hud, 104U, 38U, "WPM", th->muted, th->bg, 1U, false, false);
     }
     hud->prev_wpm = wpm;
   }
@@ -393,23 +551,32 @@ static void draw_home_right_stats(pixel_hud_t *hud, bool force_all, bool flush)
   if (force_all || travel_t != hud->prev_travel_disp || hud->live.any_actuated != hud->prev_actuated) {
     char mm[6];
     fmt_mm_tenths(travel_t, mm);
-    uint16_t tcol = hud->live.any_actuated ? COL_MINT
-                  : ((disp_travel > 0U) ? COL_CYAN : COL_MUTED);
-    q_text(hud, 64U, 58U, mm, tcol, COL_BG, 1U, false, false);
+    uint16_t tcol = hud->live.any_actuated ? th->good
+                  : ((disp_travel > 0U) ? th->accent : th->muted);
+    q_text(hud, 64U, 58U, mm, tcol, th->bg, 1U, false, false);
 
-    /* Compact horizontal live travel bar (x=64..122, y=71..80: clear full marker height first) */
     rect_batch_t b;
     batch_init(&b);
-    batch_add(&b, 64U, 71U, 59U, 10U, COL_BG);
-    batch_add(&b, 64U, 73U, 58U, 6U, COL_DIM);
-    uint8_t fill_w = (uint8_t)(((uint32_t)disp_travel * 58U) / 4000U);
-    if (fill_w > 58U) fill_w = 58U;
-    if (fill_w > 0U) {
-      batch_add(&b, 64U, 73U, fill_w, 6U, tcol);
+    batch_add(&b, 64U, 71U, 59U, 10U, th->bg);
+    if (th->id == TFT_THEME_TERMINAL) {
+      /* 8 retro CRT phosphor block segments across x=64..120 */
+      uint8_t lit = (uint8_t)(((uint32_t)disp_travel * 8U + 2000U) / 4000U);
+      if (lit > 8U) lit = 8U;
+      for (uint8_t s = 0U; s < 8U; s++) {
+        uint8_t sx = (uint8_t)(64U + (s * 7U));
+        batch_add(&b, sx, 73U, 5U, 6U, (s < lit) ? tcol : th->dim);
+      }
+    } else {
+      batch_add(&b, 64U, 73U, 58U, 6U, th->dim);
+      uint8_t fill_w = (uint8_t)(((uint32_t)disp_travel * 58U) / 4000U);
+      if (fill_w > 58U) fill_w = 58U;
+      if (fill_w > 0U) {
+        batch_add(&b, 64U, 73U, fill_w, 6U, tcol);
+      }
     }
     uint8_t act_x = (uint8_t)(64U + (((uint32_t)hud->cfg->hall_actuation_um * 58U) / 4000U));
     if (act_x > 121U) act_x = 121U;
-    batch_add(&b, act_x, 71U, 2U, 10U, COL_AMBER);
+    batch_add(&b, act_x, 71U, 2U, 10U, th->warn);
     batch_submit(hud, &b, false);
     hud->prev_travel_disp = travel_t;
   }
@@ -420,15 +587,22 @@ static void draw_home_right_stats(pixel_hud_t *hud, bool force_all, bool flush)
     bool caps_on = ((hud->live.host_leds & 2U) != 0U);
     rect_batch_t b;
     batch_init(&b);
-    batch_add(&b, 64U, 88U, 26U, 16U, rt_on ? COL_AMBER : COL_CARD);
-    batch_add(&b, 94U, 88U, 28U, 16U, caps_on ? COL_CORAL : COL_CARD);
+    if (th->id == TFT_THEME_TERMINAL) {
+      batch_add(&b, 64U, 88U, 26U, 16U, rt_on ? th->warn : th->border);
+      batch_add(&b, 65U, 89U, 24U, 14U, rt_on ? th->warn : th->bg);
+      batch_add(&b, 94U, 88U, 28U, 16U, caps_on ? th->alert : th->border);
+      batch_add(&b, 95U, 89U, 26U, 14U, caps_on ? th->alert : th->bg);
+    } else {
+      batch_add(&b, 64U, 88U, 26U, 16U, rt_on ? th->warn : th->card);
+      batch_add(&b, 94U, 88U, 28U, 16U, caps_on ? th->alert : th->card);
+    }
     batch_submit(hud, &b, false);
 
-    q_text(hud, 71U, 90U, "RT", rt_on ? COL_BG : COL_MUTED,
-           rt_on ? COL_AMBER : COL_CARD, 1U, true, false);
+    uint16_t b1_bg = rt_on ? th->warn : ((th->id == TFT_THEME_TERMINAL) ? th->bg : th->card);
+    uint16_t b2_bg = caps_on ? th->alert : ((th->id == TFT_THEME_TERMINAL) ? th->bg : th->card);
+    q_text(hud, 71U, 90U, "RT", rt_on ? th->cursor_fg : th->muted, b1_bg, 1U, true, false);
     char const *b2 = caps_on ? "CAP" : (hud->cfg->mac_mode ? "MAC" : "WIN");
-    q_text(hud, 99U, 90U, b2, caps_on ? COL_WHITE : COL_CYAN,
-           caps_on ? COL_CORAL : COL_CARD, 1U, true, flush);
+    q_text(hud, 99U, 90U, b2, caps_on ? th->text : th->accent, b2_bg, 1U, true, flush);
     hud->prev_badges_hash = bhash;
   } else if (flush) {
     uint8_t f = 0xFFU;
@@ -436,106 +610,342 @@ static void draw_home_right_stats(pixel_hud_t *hud, bool force_all, bool flush)
   }
 }
 
-/* Bottom page-indicator strip (y = 112..127) */
+/* STOCK+ Home dynamic updater: Classic GamaKay hero clock card + live Hall bar & WPM strip */
+static void draw_stock_home_dynamic(pixel_hud_t *hud, uint8_t dy, bool actuated, bool force_all, bool flush)
+{
+  hud_theme_t const *th = active_theme(hud);
+  uint8_t hh = 0U, mm = 0U, ss = 0U;
+  get_display_hms(hud, &hh, &mm, &ss);
+  uint8_t sec_odd = ss & 1U;
+
+  uint16_t disp_travel = hud->travel_active ? hud->smooth_travel_um : 0U;
+  uint16_t travel_t = (disp_travel > 0U)
+                        ? (uint16_t)((disp_travel + 50U) / 100U)
+                        : (uint16_t)((hud->cfg->hall_actuation_um + 50U) / 100U);
+
+  bool clk_chg   = force_all || (hh != hud->prev_home_hour) || (mm != hud->prev_home_min) ||
+                   (hud->live.rtc_valid != hud->prev_home_rtc_valid);
+  bool col_chg   = force_all || (sec_odd != hud->prev_home_sec_odd);
+  bool wpm_chg   = force_all || (hud->live.wpm != hud->prev_wpm);
+  bool trv_chg   = force_all || (travel_t != hud->prev_travel_disp) ||
+                   (dy != hud->anim_plunger_px) || (actuated != hud->prev_actuated);
+  uint8_t bhash  = compute_badges_hash(hud);
+  bool bdg_chg   = force_all || (bhash != hud->prev_badges_hash);
+
+  /* Hero Clock Card (x=5..122, y=23..60): classic GamaKay big clock on left + WPM on right */
+  if (clk_chg) {
+    char h2[3], m2[3];
+    fmt_u8_zero2(hh, h2);
+    fmt_u8_zero2(mm, m2);
+    q_text(hud, 10U, 29U, h2, th->text, th->card, 2U, false, false);
+    q_text(hud, 46U, 29U, m2, th->text, th->card, 2U, false, false);
+    hud->prev_home_hour      = hh;
+    hud->prev_home_min       = mm;
+    hud->prev_home_rtc_valid = hud->live.rtc_valid;
+  }
+  if (col_chg) {
+    q_text(hud, 34U, 29U, ":", (sec_odd == 0U) ? th->warn : th->muted, th->card, 2U, false, false);
+    hud->prev_home_sec_odd = sec_odd;
+  }
+  if (wpm_chg) {
+    char w3[4];
+    fmt_wpm3(hud->live.wpm, w3);
+    q_text(hud, 82U, 28U, w3, th->accent, th->card, 1U, false, false);
+    if (force_all) {
+      q_text(hud, 102U, 28U, "WPM", th->muted, th->card, 1U, false, false);
+    }
+    hud->prev_wpm = hud->live.wpm;
+  }
+
+  if (trv_chg) {
+    char mm_s[6];
+    fmt_mm_tenths(travel_t, mm_s);
+    uint16_t tcol = actuated ? th->good : ((disp_travel > 0U) ? th->accent : th->muted);
+    q_text(hud, 82U, 42U, mm_s, tcol, th->card, 1U, false, false);
+
+    /* Full-width 10-block stepped Hall travel gauge inside bottom card (x=8..119, y=67..84) */
+    rect_batch_t b;
+    batch_init(&b);
+    batch_add(&b, 8U, 69U, 112U, 12U, th->card);
+    uint8_t segs = (uint8_t)(((uint32_t)disp_travel * 10U + 2000U) / 4000U);
+    if (segs > 10U) segs = 10U;
+    for (uint8_t s = 0U; s < 10U; s++) {
+      uint8_t sx = (uint8_t)(9U + (s * 11U));
+      batch_add(&b, sx, 71U, 9U, 8U, (s < segs) ? tcol : th->dim);
+    }
+    uint8_t act_x = (uint8_t)(9U + (((uint32_t)hud->cfg->hall_actuation_um * 108U) / 4000U));
+    if (act_x > 117U) act_x = 117U;
+    batch_add(&b, act_x, 69U, 2U, 12U, th->warn);
+    batch_submit(hud, &b, false);
+
+    hud->anim_plunger_px  = dy;
+    hud->prev_actuated    = actuated;
+    hud->prev_travel_disp = travel_t;
+  }
+
+  if (bdg_chg) {
+    bool rt_on   = (hud->cfg->hall_rt_enabled != 0U);
+    bool caps_on = ((hud->live.host_leds & 2U) != 0U);
+    bool eco_on  = (hud->cfg->sleep_timeout_min > 0U);
+    rect_batch_t b;
+    batch_init(&b);
+    batch_add(&b, 8U, 87U, 30U, 16U, rt_on ? th->warn : th->dim);
+    batch_add(&b, 44U, 87U, 36U, 16U, caps_on ? th->alert : th->dim);
+    batch_add(&b, 86U, 87U, 34U, 16U, eco_on ? th->accent : th->dim);
+    batch_submit(hud, &b, false);
+
+    q_text(hud, 17U, 89U, "RT", rt_on ? th->cursor_fg : th->muted, rt_on ? th->warn : th->dim, 1U, true, false);
+    char const *b2 = caps_on ? "CAPS" : (hud->cfg->mac_mode ? "MAC" : "WIN");
+    q_text(hud, caps_on ? 50U : 53U, 89U, b2, caps_on ? th->text : th->accent, caps_on ? th->alert : th->dim, 1U, true, false);
+    q_text(hud, 94U, 89U, "ECO", eco_on ? th->cursor_fg : th->muted, eco_on ? th->accent : th->dim, 1U, true, flush);
+    hud->prev_badges_hash = bhash;
+  } else if (flush) {
+    uint8_t f = 0xFFU;
+    (void)enqueue_op(hud, PIXEL_HUD_CMD_BRIGHTNESS, &f, 1U);
+  }
+}
+
+/* Bottom page-indicator strip (y = 111..127) styled per active theme */
 static void draw_footer(pixel_hud_t *hud, bool flush)
 {
+  hud_theme_t const *th = active_theme(hud);
   rect_batch_t b;
   batch_init(&b);
-  batch_add(&b, 0U, 111U, 128U, 1U, COL_BORDER);
-  batch_add(&b, 0U, 112U, 128U, 16U, COL_CARD);
 
-  /* 6 crisp pixel page indicator dots */
-  uint8_t x = 6U;
+  if (th->id == TFT_THEME_STOCK_PLUS) {
+    batch_add(&b, 0U, 111U, 128U, 1U, th->accent);
+    batch_add(&b, 0U, 112U, 128U, 16U, th->header_bg);
+    /* Classic Stock segmented page tabs (7 x 7px tabs) */
+    uint8_t x = 5U;
+    for (uint8_t i = 0U; i < PIXEL_PAGE_COUNT; i++) {
+      bool cur = (i == hud->page);
+      batch_add(&b, x, cur ? 116U : 119U, 7U, cur ? 6U : 3U, cur ? th->warn : th->muted);
+      x = (uint8_t)(x + 9U);
+    }
+    batch_submit(hud, &b, false);
+    char const *hint = hud->menu_open ? (hud->editing ? "DIAL:SET" : "PUSH:OK ") : "FN+KNOB ";
+    uint16_t hcol    = hud->editing ? th->warn : (hud->menu_open ? th->text : th->muted);
+    q_text(hud, 74U, 114U, hint, hcol, th->header_bg, 1U, false, flush);
+    return;
+  }
+
+  if (th->id == TFT_THEME_TERMINAL) {
+    batch_add(&b, 0U, 110U, 128U, 1U, th->border);
+    batch_add(&b, 0U, 111U, 128U, 1U, th->accent);
+    batch_add(&b, 0U, 112U, 128U, 16U, th->card);
+    uint8_t x = 5U;
+    for (uint8_t i = 0U; i < PIXEL_PAGE_COUNT; i++) {
+      bool cur = (i == hud->page);
+      batch_add(&b, x, 117U, cur ? 8U : 4U, 5U, cur ? th->accent : th->border);
+      x = (uint8_t)(x + (cur ? 10U : 7U));
+    }
+    batch_submit(hud, &b, false);
+    char const *hint = hud->menu_open ? (hud->editing ? "SET:TURN" : "OK:EDIT ") : "FN+KNOB ";
+    uint16_t hcol    = hud->editing ? th->warn : (hud->menu_open ? th->accent : th->muted);
+    q_text(hud, 74U, 114U, hint, hcol, th->card, 1U, false, flush);
+    return;
+  }
+
+  /* PIXEL theme */
+  batch_add(&b, 0U, 111U, 128U, 1U, th->border);
+  batch_add(&b, 0U, 112U, 128U, 16U, th->card);
+  uint8_t x = 5U;
   for (uint8_t i = 0U; i < PIXEL_PAGE_COUNT; i++) {
     if (i == hud->page) {
-      batch_add(&b, x, 118U, 10U, 4U, COL_CYAN);
-      x = (uint8_t)(x + 13U);
+      batch_add(&b, x, 118U, 9U, 4U, th->accent);
+      x = (uint8_t)(x + 12U);
     } else {
-      batch_add(&b, x, 118U, 4U, 4U, COL_MUTED);
+      batch_add(&b, x, 118U, 4U, 4U, th->muted);
       x = (uint8_t)(x + 7U);
     }
   }
   batch_submit(hud, &b, false);
 
   char const *hint = hud->menu_open ? (hud->editing ? "TURN:SET" : "OK:EDIT ") : "FN+KNOB ";
-  uint16_t hcol    = hud->editing ? COL_AMBER : (hud->menu_open ? COL_CYAN : COL_MUTED);
-  q_text(hud, 74U, 114U, hint, hcol, COL_CARD, 1U, false, flush);
+  uint16_t hcol    = hud->editing ? th->warn : (hud->menu_open ? th->accent : th->muted);
+  q_text(hud, 74U, 114U, hint, hcol, th->card, 1U, false, flush);
 }
 
-/* Draw reusable menu top tab bar for pages 1..3 (y = 0..19) */
+/* Draw reusable menu top tab bar for pages 1..6 (y = 0..19) */
 static void draw_menu_header(pixel_hud_t *hud, char const *title, uint8_t icon_kind)
 {
+  hud_theme_t const *th = active_theme(hud);
   bool tab_focused = (hud->focus_row == 0U);
+  uint16_t hbg = tab_focused ? th->header_focus : th->header_bg;
+
+  if (th->id == TFT_THEME_TERMINAL) {
+    rect_batch_t b;
+    batch_init(&b);
+    batch_add(&b, 0U, 0U, 128U, 17U, hbg);
+    batch_add(&b, 0U, 17U, 128U, 1U, tab_focused ? th->warn : th->accent);
+    batch_add(&b, 0U, 18U, 128U, 1U, th->bg);
+    batch_add(&b, 0U, 19U, 128U, 1U, th->border);
+    batch_submit(hud, &b, false);
+
+    char prompt[16];
+    prompt[0] = '>';
+    size_t n = strlen(title);
+    if (n > 12U) n = 12U;
+    memcpy(&prompt[1], title, n);
+    prompt[1U + n] = '\0';
+    q_text(hud, 4U, 3U, prompt, tab_focused ? th->warn : th->accent, hbg, 1U, false, false);
+
+    char idx_s[6] = { '[', (char)('0' + hud->page), '/', (char)('0' + (PIXEL_PAGE_COUNT - 1U)), ']', '\0' };
+    q_text(hud, 94U, 3U, idx_s, tab_focused ? th->text : th->muted, hbg, 1U, false, false);
+    return;
+  }
+
   rect_batch_t b;
   batch_init(&b);
-  batch_add(&b, 0U, 0U, 128U, 18U, tab_focused ? COL_BORDER : COL_CARD);
-  batch_add(&b, 0U, 18U, 128U, 1U, tab_focused ? COL_CYAN : COL_BORDER);
+  batch_add(&b, 0U, 0U, 128U, 18U, hbg);
+  batch_add(&b, 0U, 18U, 128U, 1U, tab_focused ? th->warn : ((th->id == TFT_THEME_STOCK_PLUS) ? th->accent : th->border));
 
   /* Minimal 8x8 pixel-art page icon at (6, 5) */
   if (icon_kind == 0U) {
     /* Sun (Brightness) */
-    batch_add(&b, 8U, 7U, 4U, 4U, COL_AMBER);
-    batch_add(&b, 9U, 4U, 2U, 2U, COL_AMBER);
-    batch_add(&b, 9U, 12U, 2U, 2U, COL_AMBER);
-    batch_add(&b, 5U, 8U, 2U, 2U, COL_AMBER);
-    batch_add(&b, 13U, 8U, 2U, 2U, COL_AMBER);
+    batch_add(&b, 8U, 7U, 4U, 4U, th->warn);
+    batch_add(&b, 9U, 4U, 2U, 2U, th->warn);
+    batch_add(&b, 9U, 12U, 2U, 2U, th->warn);
+    batch_add(&b, 5U, 8U, 2U, 2U, th->warn);
+    batch_add(&b, 13U, 8U, 2U, 2U, th->warn);
   } else if (icon_kind == 1U) {
     /* Switch stem (Hall Effect) */
-    batch_add(&b, 6U, 5U, 8U, 3U, COL_CYAN);
-    batch_add(&b, 8U, 8U, 4U, 5U, COL_MINT);
+    batch_add(&b, 6U, 5U, 8U, 3U, th->accent);
+    batch_add(&b, 8U, 8U, 4U, 5U, th->good);
   } else if (icon_kind == 2U) {
     /* Play triangle (Macro) */
-    batch_add(&b, 7U, 5U, 2U, 8U, COL_MINT);
-    batch_add(&b, 9U, 6U, 2U, 6U, COL_MINT);
-    batch_add(&b, 11U, 7U, 2U, 4U, COL_AMBER);
-    batch_add(&b, 13U, 8U, 2U, 2U, COL_AMBER);
+    batch_add(&b, 7U, 5U, 2U, 8U, th->good);
+    batch_add(&b, 9U, 6U, 2U, 6U, th->good);
+    batch_add(&b, 11U, 7U, 2U, 4U, th->warn);
+    batch_add(&b, 13U, 8U, 2U, 2U, th->warn);
   } else if (icon_kind == 4U) {
-    /* RGB Palette (Lighting / Colors & Effects) */
-    batch_add(&b, 6U, 5U, 4U, 4U, COL_CORAL);
-    batch_add(&b, 11U, 5U, 4U, 4U, COL_MINT);
-    batch_add(&b, 8U, 10U, 4U, 4U, COL_CYAN);
+    /* RGB Palette (Lighting) */
+    batch_add(&b, 6U, 5U, 4U, 4U, th->alert);
+    batch_add(&b, 11U, 5U, 4U, 4U, th->good);
+    batch_add(&b, 8U, 10U, 4U, 4U, th->accent);
+  } else if (icon_kind == 5U) {
+    /* Lightning / Eco Power bolt */
+    batch_add(&b, 9U, 4U, 3U, 2U, th->good);
+    batch_add(&b, 7U, 6U, 4U, 2U, th->text);
+    batch_add(&b, 6U, 8U, 6U, 2U, th->warn);
+    batch_add(&b, 8U, 10U, 4U, 2U, th->text);
+    batch_add(&b, 7U, 12U, 3U, 2U, th->good);
   } else {
     /* Gear (System) */
-    batch_add(&b, 7U, 6U, 6U, 6U, COL_CYAN);
-    batch_add(&b, 9U, 8U, 2U, 2U, COL_CARD);
+    batch_add(&b, 7U, 6U, 6U, 6U, tab_focused ? th->text : th->accent);
+    batch_add(&b, 9U, 8U, 2U, 2U, hbg);
   }
   batch_submit(hud, &b, false);
 
-  q_text(hud, 20U, 3U, title, tab_focused ? COL_CYAN : COL_WHITE,
-         tab_focused ? COL_BORDER : COL_CARD, 1U, false, false);
-  q_text(hud, 108U, 3U, "<>", tab_focused ? COL_AMBER : COL_MUTED,
-         tab_focused ? COL_BORDER : COL_CARD, 1U, false, false);
+  uint16_t title_fg = tab_focused ? ((th->id == TFT_THEME_STOCK_PLUS) ? th->text : th->accent) : th->text;
+  q_text(hud, 20U, 3U, title, title_fg, hbg, 1U, false, false);
+  q_text(hud, 108U, 3U, "<>", tab_focused ? th->warn : th->muted, hbg, 1U, false, false);
 }
 
-/* Draw one compact pixel-art slider row (height 19 px, fits 4 rows cleanly on BRIGHTNESS page) */
+/* Shared themed row frame builder (supports compact h=19 & tall h=24 rows across all 3 skins) */
+static void batch_add_row_frame(rect_batch_t *b, hud_theme_t const *th, uint8_t y, uint8_t h,
+                                bool focused, bool editing, uint16_t *out_bg)
+{
+  uint16_t edge = editing ? th->warn : (focused ? th->accent : th->border);
+  uint16_t bg   = focused ? th->focus_bg : th->bg;
+  *out_bg       = bg;
+
+  if (th->id == TFT_THEME_STOCK_PLUS) {
+    /* Stock+ classic full-width row strip with bright accent bar & bottom hairline */
+    batch_add(b, 2U, y, 124U, h, focused ? bg : th->card);
+    if (focused) {
+      batch_add(b, 2U, y, 124U, 1U, edge);
+      batch_add(b, 2U, (uint8_t)(y + h - 1U), 124U, 1U, edge);
+      batch_add(b, 2U, y, 4U, h, editing ? th->warn : th->accent);
+    } else {
+      batch_add(b, 4U, (uint8_t)(y + h - 1U), 120U, 1U, th->border);
+    }
+    *out_bg = focused ? bg : th->card;
+    return;
+  }
+
+  if (th->id == TFT_THEME_TERMINAL) {
+    /* Terminal CRT open corner-bracketed row */
+    batch_add(b, 4U, y, 120U, h, bg);
+    if (focused) {
+      batch_add(b, 4U, y, 6U, 1U, edge);
+      batch_add(b, 4U, y, 1U, h, edge);
+      batch_add(b, 4U, (uint8_t)(y + h - 1U), 6U, 1U, edge);
+      batch_add(b, 118U, y, 6U, 1U, edge);
+      batch_add(b, 123U, y, 1U, h, edge);
+      batch_add(b, 118U, (uint8_t)(y + h - 1U), 6U, 1U, edge);
+    } else {
+      batch_add(b, 4U, (uint8_t)(y + h - 1U), 120U, 1U, th->dim);
+    }
+    return;
+  }
+
+  /* PIXEL theme */
+  batch_add(b, 4U, y, 120U, h, edge);
+  batch_add(b, 5U, (uint8_t)(y + 1U), 118U, (uint8_t)(h - 2U), bg);
+  if (focused) {
+    batch_add(b, 5U, (uint8_t)(y + 1U), 3U, (uint8_t)(h - 2U), editing ? th->warn : th->accent);
+  }
+}
+
+/* Draw one compact slider row (height 19 px) styled per active theme */
 static void draw_slider_row_compact(pixel_hud_t *hud, uint8_t row_idx, uint8_t y,
                                     char const *label, uint8_t pct, uint16_t bar_col)
 {
+  hud_theme_t const *th = active_theme(hud);
   bool focused = (hud->focus_row == row_idx);
   bool editing = focused && hud->editing;
-  uint16_t border = editing ? COL_AMBER : (focused ? COL_CYAN : COL_BORDER);
-  uint16_t bg     = focused ? COL_CARD : COL_BG;
+  uint16_t bg  = th->bg;
 
   rect_batch_t b;
   batch_init(&b);
-  batch_add(&b, 4U, y, 120U, 19U, border);
-  batch_add(&b, 5U, (uint8_t)(y + 1U), 118U, 17U, bg);
-  if (focused) {
-    batch_add(&b, 5U, (uint8_t)(y + 1U), 3U, 17U, editing ? COL_AMBER : COL_CYAN);
-  }
-  /* Track @ (36, y+6, w=54, h=7) */
-  batch_add(&b, 36U, (uint8_t)(y + 6U), 54U, 7U, COL_DIM);
-  uint8_t fill_w = (uint8_t)(((uint32_t)pct * 54U + 50U) / 100U);
-  if (fill_w > 54U) fill_w = 54U;
-  if (fill_w > 0U) {
-    batch_add(&b, 36U, (uint8_t)(y + 6U), fill_w, 7U, editing ? COL_AMBER : bar_col);
+  batch_add_row_frame(&b, th, y, 19U, focused, editing, &bg);
+  batch_submit(hud, &b, false);
+
+  /* Track & segments in their own clean batch (<= 11 rects, guaranteed under MAX_BATCH_RECTS) */
+  batch_init(&b);
+  uint16_t fill_col = editing ? th->warn : bar_col;
+  if (th->id == TFT_THEME_STOCK_PLUS) {
+    /* Stock+ 10-step segmented progress bar @ x=38..91 */
+    uint8_t lit = (uint8_t)((pct + 5U) / 10U);
+    if (lit > 10U) lit = 10U;
+    for (uint8_t s = 0U; s < 10U; s++) {
+      uint8_t sx = (uint8_t)(38U + (s * 5U));
+      batch_add(&b, sx, (uint8_t)(y + 5U), 4U, 9U, (s < lit) ? fill_col : th->dim);
+    }
+  } else if (th->id == TFT_THEME_TERMINAL) {
+    /* Terminal 8 chunky CRT blocks @ x=38..89 */
+    uint8_t lit = (uint8_t)(((uint32_t)pct * 8U + 50U) / 100U);
+    if (lit > 8U) lit = 8U;
+    for (uint8_t s = 0U; s < 8U; s++) {
+      uint8_t sx = (uint8_t)(38U + (s * 6U));
+      batch_add(&b, sx, (uint8_t)(y + 6U), 4U, 7U, (s < lit) ? fill_col : th->dim);
+    }
+  } else {
+    batch_add(&b, 36U, (uint8_t)(y + 6U), 54U, 7U, th->dim);
+    uint8_t fill_w = (uint8_t)(((uint32_t)pct * 54U + 50U) / 100U);
+    if (fill_w > 54U) fill_w = 54U;
+    if (fill_w > 0U) {
+      batch_add(&b, 36U, (uint8_t)(y + 6U), fill_w, 7U, fill_col);
+    }
   }
   batch_submit(hud, &b, false);
 
-  q_text(hud, 11U, (uint8_t)(y + 4U), label, focused ? COL_WHITE : COL_MUTED, bg, 1U, false, false);
+  if (focused && (th->id == TFT_THEME_STOCK_PLUS || th->id == TFT_THEME_TERMINAL)) {
+    char pfx[6];
+    pfx[0] = editing ? '*' : '>';
+    size_t n = strlen(label);
+    if (n > 4U) n = 4U;
+    memcpy(&pfx[1], label, n);
+    pfx[1U + n] = '\0';
+    q_text(hud, 8U, (uint8_t)(y + 4U), pfx, editing ? th->warn : th->text, bg, 1U, false, false);
+  } else {
+    q_text(hud, 11U, (uint8_t)(y + 4U), label, focused ? th->text : th->muted, bg, 1U, false, false);
+  }
+
   char pstr[5];
   fmt_u8_pct(pct, pstr);
-  q_text(hud, 95U, (uint8_t)(y + 4U), pstr, editing ? COL_AMBER : COL_WHITE, bg, 1U, false, false);
+  q_text(hud, 95U, (uint8_t)(y + 4U), pstr, editing ? th->warn : th->text, bg, 1U, false, false);
 }
 
 static char const *caps_side_fx_short_name(uint8_t enabled, uint8_t fx)
@@ -549,48 +959,45 @@ static char const *caps_side_fx_short_name(uint8_t enabled, uint8_t fx)
   return (fx < CAPS_SIDE_FX_COUNT) ? k_names[fx] : "SOLID ";
 }
 
-/* Draw one compact key-value row (height 19 px, fits 4 rows cleanly on SYSTEM page) */
+/* Draw one key-value row (compact h=19 or chunky h=24) */
+static void draw_kv_row(pixel_hud_t *hud, uint8_t row_idx, uint8_t y, uint8_t h,
+                        char const *label, char const *val, uint16_t val_col)
+{
+  hud_theme_t const *th = active_theme(hud);
+  bool focused = (hud->focus_row == row_idx);
+  bool editing = focused && hud->editing;
+  uint16_t bg  = th->bg;
+  uint8_t ty   = (uint8_t)(y + ((h > 20U) ? 6U : 4U));
+
+  rect_batch_t b;
+  batch_init(&b);
+  batch_add_row_frame(&b, th, y, h, focused, editing, &bg);
+  batch_submit(hud, &b, false);
+
+  if (focused && (th->id == TFT_THEME_STOCK_PLUS || th->id == TFT_THEME_TERMINAL)) {
+    char pfx[7];
+    pfx[0] = editing ? '*' : '>';
+    size_t n = strlen(label);
+    if (n > 5U) n = 5U;
+    memcpy(&pfx[1], label, n);
+    pfx[1U + n] = '\0';
+    q_text(hud, 8U, ty, pfx, editing ? th->warn : th->text, bg, 1U, false, false);
+  } else {
+    q_text(hud, 12U, ty, label, focused ? th->text : th->muted, bg, 1U, false, false);
+  }
+  q_text(hud, 62U, ty, val, editing ? th->warn : val_col, bg, 1U, false, false);
+}
+
 static void draw_value_row_compact(pixel_hud_t *hud, uint8_t row_idx, uint8_t y,
                                    char const *label, char const *val, uint16_t val_col)
 {
-  bool focused = (hud->focus_row == row_idx);
-  bool editing = focused && hud->editing;
-  uint16_t border = editing ? COL_AMBER : (focused ? COL_CYAN : COL_BORDER);
-  uint16_t bg     = focused ? COL_CARD : COL_BG;
-
-  rect_batch_t b;
-  batch_init(&b);
-  batch_add(&b, 4U, y, 120U, 19U, border);
-  batch_add(&b, 5U, (uint8_t)(y + 1U), 118U, 17U, bg);
-  if (focused) {
-    batch_add(&b, 5U, (uint8_t)(y + 1U), 3U, 17U, editing ? COL_AMBER : COL_CYAN);
-  }
-  batch_submit(hud, &b, false);
-
-  q_text(hud, 12U, (uint8_t)(y + 4U), label, focused ? COL_WHITE : COL_MUTED, bg, 1U, false, false);
-  q_text(hud, 62U, (uint8_t)(y + 4U), val, editing ? COL_AMBER : val_col, bg, 1U, false, false);
+  draw_kv_row(hud, row_idx, y, 19U, label, val, val_col);
 }
 
-/* Draw one chunky key-value row (height 26 px) */
 static void draw_value_row(pixel_hud_t *hud, uint8_t row_idx, uint8_t y,
                            char const *label, char const *val, uint16_t val_col)
 {
-  bool focused = (hud->focus_row == row_idx);
-  bool editing = focused && hud->editing;
-  uint16_t border = editing ? COL_AMBER : (focused ? COL_CYAN : COL_BORDER);
-  uint16_t bg     = focused ? COL_CARD : COL_BG;
-
-  rect_batch_t b;
-  batch_init(&b);
-  batch_add(&b, 4U, y, 120U, 24U, border);
-  batch_add(&b, 5U, (uint8_t)(y + 1U), 118U, 22U, bg);
-  if (focused) {
-    batch_add(&b, 5U, (uint8_t)(y + 1U), 3U, 22U, editing ? COL_AMBER : COL_CYAN);
-  }
-  batch_submit(hud, &b, false);
-
-  q_text(hud, 12U, (uint8_t)(y + 6U), label, focused ? COL_WHITE : COL_MUTED, bg, 1U, false, false);
-  q_text(hud, 62U, (uint8_t)(y + 6U), val, editing ? COL_AMBER : val_col, bg, 1U, false, false);
+  draw_kv_row(hud, row_idx, y, 24U, label, val, val_col);
 }
 
 static char const *macro_speed_name(uint8_t idx)
@@ -668,7 +1075,7 @@ static color_preset_t const k_color_presets[COLOR_PRESET_COUNT] = {
 static uint8_t find_nearest_color_preset(uint8_t hue, uint8_t sat)
 {
   if (sat < 48U) {
-    return COLOR_PRESET_COUNT - 1U; /* WHT */
+    return COLOR_PRESET_COUNT - 1U;
   }
   uint8_t best_idx  = 0U;
   uint8_t best_dist = 255U;
@@ -697,60 +1104,96 @@ static uint16_t hsv_to_rgb565(uint8_t hue, uint8_t sat)
 static void draw_color_row_compact(pixel_hud_t *hud, uint8_t row_idx, uint8_t y,
                                    char const *label, uint8_t hue, uint8_t sat)
 {
+  hud_theme_t const *th = active_theme(hud);
   bool focused = (hud->focus_row == row_idx);
   bool editing = focused && hud->editing;
-  uint16_t border = editing ? COL_AMBER : (focused ? COL_CYAN : COL_BORDER);
-  uint16_t bg     = focused ? COL_CARD : COL_BG;
+  uint16_t bg  = th->bg;
   uint16_t swatch = hsv_to_rgb565(hue, sat);
   uint8_t  pidx   = find_nearest_color_preset(hue, sat);
 
   rect_batch_t b;
   batch_init(&b);
-  batch_add(&b, 4U, y, 120U, 19U, border);
-  batch_add(&b, 5U, (uint8_t)(y + 1U), 118U, 17U, bg);
-  if (focused) {
-    batch_add(&b, 5U, (uint8_t)(y + 1U), 3U, 17U, editing ? COL_AMBER : COL_CYAN);
-  }
-  /* Crisp 16x11 pixel live color swatch @ (102, y+4) */
-  batch_add(&b, 101U, (uint8_t)(y + 3U), 18U, 13U, COL_WHITE);
+  batch_add_row_frame(&b, th, y, 19U, focused, editing, &bg);
+  batch_add(&b, 101U, (uint8_t)(y + 3U), 18U, 13U, th->text);
   batch_add(&b, 102U, (uint8_t)(y + 4U), 16U, 11U, swatch);
   batch_submit(hud, &b, false);
 
-  q_text(hud, 12U, (uint8_t)(y + 4U), label, focused ? COL_WHITE : COL_MUTED, bg, 1U, false, false);
+  if (focused && (th->id == TFT_THEME_STOCK_PLUS || th->id == TFT_THEME_TERMINAL)) {
+    char pfx[7];
+    pfx[0] = editing ? '*' : '>';
+    size_t n = strlen(label);
+    if (n > 5U) n = 5U;
+    memcpy(&pfx[1], label, n);
+    pfx[1U + n] = '\0';
+    q_text(hud, 8U, (uint8_t)(y + 4U), pfx, editing ? th->warn : th->text, bg, 1U, false, false);
+  } else {
+    q_text(hud, 12U, (uint8_t)(y + 4U), label, focused ? th->text : th->muted, bg, 1U, false, false);
+  }
   q_text(hud, 62U, (uint8_t)(y + 4U), k_color_presets[pidx].name,
-         editing ? COL_AMBER : COL_WHITE, bg, 1U, false, false);
+         editing ? th->warn : th->text, bg, 1U, false, false);
 }
 
 static void render_full_page(pixel_hud_t *hud)
 {
-  tk75_persist_cfg_t const *c = hud->cfg;
+  tk75_persist_cfg_t const *c  = hud->cfg;
+  hud_theme_t const        *th = active_theme(hud);
+  hud->applied_theme = th->id;
 
   if (hud->page == PIXEL_PAGE_HOME) {
-    q_fill(hud, 0U, 19U, 128U, 92U, COL_BG, false);
-    /* Left switch card frame */
+    q_fill(hud, 0U, 19U, 128U, 92U, th->bg, false);
+    draw_home_header(hud);
+
+    if (th->id == TFT_THEME_STOCK_PLUS) {
+      /* Stock+ Home: Hero Clock/WPM Card + Bottom Live Hall Gauge & Badges Card */
+      rect_batch_t b;
+      batch_init(&b);
+      batch_add(&b, 4U, 23U, 120U, 38U, th->border);
+      batch_add(&b, 5U, 24U, 118U, 36U, th->card);
+      batch_add(&b, 5U, 24U, 118U, 2U, th->warn); /* Signature Stock orange top accent */
+      batch_add(&b, 4U, 65U, 120U, 42U, th->border);
+      batch_add(&b, 5U, 66U, 118U, 40U, th->card);
+      batch_submit(hud, &b, false);
+
+      draw_stock_home_dynamic(hud, hud->anim_plunger_px, hud->live.any_actuated, true, false);
+      draw_footer(hud, true);
+      return;
+    }
+
+    /* PIXEL & TERMINAL Home: Left switch card frame + Right live telemetry */
     rect_batch_t b;
     batch_init(&b);
-    batch_add(&b, 4U, 23U, 54U, 84U, COL_BORDER);
-    batch_add(&b, 5U, 24U, 52U, 82U, COL_CARD);
+    if (th->id == TFT_THEME_TERMINAL) {
+      /* Wireframe CRT corner brackets around switch chamber */
+      batch_add(&b, 4U, 23U, 54U, 1U, th->border);
+      batch_add(&b, 4U, 106U, 54U, 1U, th->border);
+      batch_add(&b, 4U, 23U, 1U, 84U, th->border);
+      batch_add(&b, 57U, 23U, 1U, 84U, th->border);
+      batch_add(&b, 4U, 23U, 8U, 2U, th->accent);
+      batch_add(&b, 50U, 23U, 8U, 2U, th->accent);
+      batch_add(&b, 4U, 105U, 8U, 2U, th->accent);
+      batch_add(&b, 50U, 105U, 8U, 2U, th->accent);
+    } else {
+      batch_add(&b, 4U, 23U, 54U, 84U, th->border);
+      batch_add(&b, 5U, 24U, 52U, 82U, th->card);
+    }
     batch_submit(hud, &b, false);
 
-    draw_home_header(hud);
     draw_switch_animation(hud, hud->anim_plunger_px, hud->live.any_actuated, false);
     draw_home_right_stats(hud, true, false);
     draw_footer(hud, true);
     return;
   }
 
-  q_fill(hud, 0U, 19U, 128U, 92U, COL_BG, false);
+  q_fill(hud, 0U, 19U, 128U, 92U, th->bg, false);
 
   if (hud->page == PIXEL_PAGE_BRIGHTNESS) {
     draw_menu_header(hud, "BRIGHTNESS", 0U);
-    draw_slider_row_compact(hud, 1U, 22U, "TFT", c->tft_brightness, COL_CYAN);
-    draw_slider_row_compact(hud, 2U, 43U, "RGB", u8_to_pct10(c->rgb_brightness, c->rgb_enabled), COL_MINT);
-    draw_slider_row_compact(hud, 3U, 64U, "SID", u8_to_pct10(c->side_brightness, c->side_enabled), COL_AMBER);
+    draw_slider_row_compact(hud, 1U, 22U, "TFT", c->tft_brightness, th->accent);
+    draw_slider_row_compact(hud, 2U, 43U, "RGB", u8_to_pct10(c->rgb_brightness, c->rgb_enabled), th->good);
+    draw_slider_row_compact(hud, 3U, 64U, "SID", u8_to_pct10(c->side_brightness, c->side_enabled), th->warn);
     draw_value_row_compact(hud, 4U, 85U, "CAP ",
                            caps_side_fx_short_name(c->caps_side_enabled, c->caps_side_effect),
-                           (c->caps_side_enabled != 0U) ? COL_MINT : COL_MUTED);
+                           (c->caps_side_enabled != 0U) ? th->good : th->muted);
     draw_footer(hud, true);
     return;
   }
@@ -759,11 +1202,11 @@ static void render_full_page(pixel_hud_t *hud)
     draw_menu_header(hud, "LIGHTING", 4U);
     draw_value_row_compact(hud, 1U, 22U, "FX  ",
                            rgb_fx_short_name((c->rgb_enabled != 0U) ? c->rgb_effect : 0U),
-                           (c->rgb_enabled != 0U && c->rgb_effect != 0U) ? COL_CYAN : COL_MUTED);
+                           (c->rgb_enabled != 0U && c->rgb_effect != 0U) ? th->accent : th->muted);
     draw_color_row_compact(hud, 2U, 43U, "COL ", c->rgb_hue, c->rgb_sat);
     draw_value_row_compact(hud, 3U, 64U, "SFX ",
                            side_fx_short_name(c->side_enabled, c->side_effect),
-                           (c->side_enabled != 0U && c->side_effect != 0U) ? COL_AMBER : COL_MUTED);
+                           (c->side_enabled != 0U && c->side_effect != 0U) ? th->warn : th->muted);
     draw_color_row_compact(hud, 4U, 85U, "SCOL", c->side_hue, c->side_sat);
     draw_footer(hud, true);
     return;
@@ -773,83 +1216,96 @@ static void render_full_page(pixel_hud_t *hud)
     draw_menu_header(hud, "HALL SWITCH", 1U);
     char act_str[6];
     fmt_mm_tenths((uint16_t)((c->hall_actuation_um + 50U) / 100U), act_str);
-    draw_value_row_compact(hud, 1U, 22U, "ACT ", act_str, COL_CYAN);
+    draw_value_row_compact(hud, 1U, 22U, "ACT ", act_str, th->accent);
 
-    char rt_str[8] = "OFF";
+    char rt_str[8] = "OFF   ";
     if (c->hall_rt_enabled != 0U) {
       fmt_mm_tenths((uint16_t)((c->hall_rt_down_um + 50U) / 100U), rt_str);
     }
-    draw_value_row_compact(hud, 2U, 43U, "RT  ", rt_str, c->hall_rt_enabled ? COL_AMBER : COL_MUTED);
+    draw_value_row_compact(hud, 2U, 43U, "RT  ", rt_str, c->hall_rt_enabled ? th->warn : th->muted);
 
-    char const *socd_str = (c->hall_socd_mode == HALL_SOCD_LAST_PRIORITY) ? "LAST"
-                         : (c->hall_socd_mode == HALL_SOCD_NEUTRAL)       ? "NEUT"
-                                                                          : "OFF";
+    char const *socd_str = (c->hall_socd_mode == HALL_SOCD_LAST_PRIORITY)  ? "LAST  "
+                         : (c->hall_socd_mode == HALL_SOCD_NEUTRAL)        ? "NEUT  "
+                         : (c->hall_socd_mode == HALL_SOCD_FIRST_PRIORITY) ? "FIRST "
+                                                                           : "OFF   ";
     draw_value_row_compact(hud, 3U, 64U, "SOCD", socd_str,
-                           (c->hall_socd_mode != HALL_SOCD_OFF) ? COL_MINT : COL_MUTED);
-    draw_value_row_compact(hud, 4U, 85U, "CAL ", "START", COL_AMBER);
+                           (c->hall_socd_mode != HALL_SOCD_OFF) ? th->good : th->muted);
+    draw_value_row_compact(hud, 4U, 85U, "CAL ", "START ", th->warn);
     draw_footer(hud, true);
     return;
   }
 
   if (hud->page == PIXEL_PAGE_MACRO) {
     draw_menu_header(hud, "MACRO", 2U);
-    draw_value_row(hud, 1U, 24U, "SPD ", macro_speed_name(c->macro_speed_idx), COL_CYAN);
-    draw_value_row(hud, 2U, 53U, "STEP", macro_speed_detail(c->macro_speed_idx), COL_AMBER);
+    draw_value_row(hud, 1U, 24U, "SPD ", macro_speed_name(c->macro_speed_idx), th->accent);
+    draw_value_row(hud, 2U, 53U, "STEP", macro_speed_detail(c->macro_speed_idx), th->warn);
     char slots_str[9];
     bool any_used = false;
     if (hud->focus_row == 3U && hud->editing) {
       static char const k_keys[5] = { 'C', 'V', 'B', 'N', 'M' };
-      uint8_t s = hud->macro_sel_slot % 5U;
+      uint8_t s    = hud->macro_sel_slot % 5U;
       bool    used = macro_recorder_slot_has_data(c->macros, s);
       slots_str[0] = k_keys[s];
       slots_str[1] = ':';
       memcpy(&slots_str[2], used ? "PLAY" : "----", 5U);
-      draw_value_row(hud, 3U, 82U, "KEYS", slots_str, used ? COL_MINT : COL_MUTED);
+      draw_value_row(hud, 3U, 82U, "KEYS", slots_str, used ? th->good : th->muted);
     } else {
       format_macro_slots(c->macros, slots_str, &any_used);
-      draw_value_row(hud, 3U, 82U, "KEYS", slots_str, any_used ? COL_MINT : COL_MUTED);
+      draw_value_row(hud, 3U, 82U, "KEYS", slots_str, any_used ? th->good : th->muted);
     }
+    draw_footer(hud, true);
+    return;
+  }
+
+  if (hud->page == PIXEL_PAGE_POWER) {
+    draw_menu_header(hud, "POWER", 5U);
+    char eco_str[7];
+    fmt_eco_timeout(c->sleep_timeout_min, eco_str);
+    draw_value_row_compact(hud, 1U, 22U, "ECO ", eco_str,
+                           (c->sleep_timeout_min > 0U) ? th->good : th->muted);
+    draw_value_row_compact(hud, 2U, 43U, "SAVR", c->tft_screensaver ? "ON    " : "OFF   ",
+                           c->tft_screensaver ? th->accent : th->muted);
+    draw_value_row_compact(hud, 3U, 64U, "RATE", rf_rate_short_name(c->rf_poll_rate_idx), th->warn);
+    draw_value_row_compact(hud, 4U, 85U, "CLK ", c->tft_clock_24h ? "24H   " : "12H   ", th->text);
     draw_footer(hud, true);
     return;
   }
 
   /* PIXEL_PAGE_SYSTEM (4 compact rows fitting y=22..103 cleanly) */
   draw_menu_header(hud, "SYSTEM", 3U);
-  draw_slider_row_compact(hud, 1U, 22U, "SPD", u8_to_pct10(c->rgb_speed, 1U), COL_CYAN);
-  draw_value_row_compact(hud, 2U, 43U, "OS  ", c->mac_mode ? "MACOS" : "WIN/LNX", COL_MINT);
-  draw_value_row_compact(hud, 3U, 64U, "SAVR", c->tft_screensaver ? "ON " : "OFF",
-                         c->tft_screensaver ? COL_MINT : COL_MUTED);
-  draw_value_row_compact(hud, 4U, 85U, "UI  ", hud->stock_ui_mode ? "STOCK" : "PIXEL", COL_AMBER);
+  draw_slider_row_compact(hud, 1U, 22U, "SPD", u8_to_pct10(c->rgb_speed, 1U), th->accent);
+  draw_value_row_compact(hud, 2U, 43U, "OS  ", c->mac_mode ? "MACOS " : "WIN   ", th->good);
+  draw_value_row_compact(hud, 3U, 64U, "WINL", c->win_lock ? "LOCKED" : "OFF   ",
+                         c->win_lock ? th->alert : th->muted);
+  draw_value_row_compact(hud, 4U, 85U, "SKIN", th->name, th->warn);
   draw_footer(hud, true);
 }
 
-/* Draw static chrome of fullscreen pixel-art macro recording screen (128x128) */
+/* Draw static chrome of fullscreen macro recording screen (128x128, themed) */
 static void draw_macro_rec_static(pixel_hud_t *hud)
 {
-  q_fill(hud, 0U, 0U, 128U, 128U, COL_BG, false);
+  hud_theme_t const *th = active_theme(hud);
+  q_fill(hud, 0U, 0U, 128U, 128U, th->bg, false);
 
   rect_batch_t b;
   batch_init(&b);
-  /* Outer viewfinder corner brackets */
-  batch_add(&b, 2U, 2U, 12U, 2U, COL_CORAL);
-  batch_add(&b, 2U, 2U, 2U, 12U, COL_CORAL);
-  batch_add(&b, 114U, 2U, 12U, 2U, COL_CORAL);
-  batch_add(&b, 124U, 2U, 2U, 12U, COL_CORAL);
-  batch_add(&b, 2U, 124U, 12U, 2U, COL_CORAL);
-  batch_add(&b, 2U, 114U, 2U, 12U, COL_CORAL);
-  batch_add(&b, 114U, 124U, 12U, 2U, COL_CORAL);
-  batch_add(&b, 124U, 114U, 2U, 12U, COL_CORAL);
+  batch_add(&b, 2U, 2U, 12U, 2U, th->alert);
+  batch_add(&b, 2U, 2U, 2U, 12U, th->alert);
+  batch_add(&b, 114U, 2U, 12U, 2U, th->alert);
+  batch_add(&b, 124U, 2U, 2U, 12U, th->alert);
+  batch_add(&b, 2U, 124U, 12U, 2U, th->alert);
+  batch_add(&b, 2U, 114U, 2U, 12U, th->alert);
+  batch_add(&b, 114U, 124U, 12U, 2U, th->alert);
+  batch_add(&b, 124U, 114U, 2U, 12U, th->alert);
 
-  /* Retro cassette tape deck body (x=12..115, y=28..74) */
-  batch_add(&b, 12U, 28U, 104U, 46U, COL_BORDER);
-  batch_add(&b, 14U, 30U, 100U, 42U, COL_CARD);
-  batch_add(&b, 18U, 34U, 92U, 26U, COL_DIM);     /* Tape reel window */
-  batch_add(&b, 28U, 64U, 72U, 8U, COL_HOUSING);  /* Cassette bottom trapezoid */
-  batch_add(&b, 36U, 66U, 6U, 4U, COL_BG);        /* Capstan hole L */
-  batch_add(&b, 86U, 66U, 6U, 4U, COL_BG);        /* Capstan hole R */
+  batch_add(&b, 12U, 28U, 104U, 46U, th->border);
+  batch_add(&b, 14U, 30U, 100U, 42U, th->card);
+  batch_add(&b, 18U, 34U, 92U, 26U, th->dim);
+  batch_add(&b, 28U, 64U, 72U, 8U, th->housing);
+  batch_add(&b, 36U, 66U, 6U, 4U, th->bg);
+  batch_add(&b, 86U, 66U, 6U, 4U, th->bg);
   batch_submit(hud, &b, false);
 
-  /* Header title: "REC M0 (C)" (or "REC M5" for slots >= 5) */
   static char const k_slot_keys[5] = { 'C', 'V', 'B', 'N', 'M' };
   char hdr[12];
   uint8_t s = hud->live.macro_rec_slot;
@@ -864,15 +1320,15 @@ static void draw_macro_rec_static(pixel_hud_t *hud)
   } else {
     hdr[5] = '1'; hdr[6] = (char)('0' + (s - 10U)); hdr[7] = '\0';
   }
-  q_text(hud, 24U, 8U, hdr, COL_WHITE, COL_BG, 1U, false, false);
-  q_text(hud, 14U, 80U, "EVTS:", COL_MUTED, COL_BG, 1U, false, false);
-  q_text(hud, 66U, 80U, "/341", COL_MUTED, COL_BG, 1U, false, false);
-  q_text(hud, 14U, 109U, "FN:EDIT / SAVE", COL_AMBER, COL_BG, 1U, false, false);
+  q_text(hud, 24U, 8U, hdr, th->text, th->bg, 1U, false, false);
+  q_text(hud, 14U, 80U, "EVTS:", th->muted, th->bg, 1U, false, false);
+  q_text(hud, 66U, 80U, "/341", th->muted, th->bg, 1U, false, false);
+  q_text(hud, 14U, 109U, "FN:EDIT / SAVE", th->warn, th->bg, 1U, false, false);
 }
 
-/* Draw 1 animated frame of fullscreen macro recorder (blinking REC dot + spinning reels + meter) */
 static void draw_macro_rec_anim(pixel_hud_t *hud, bool force_text)
 {
+  hud_theme_t const *th = active_theme(hud);
   uint8_t  phase   = hud->rec_anim_phase & 3U;
   bool     dot_on  = (phase < 2U);
   uint16_t bytes   = hud->live.macro_rec_bytes;
@@ -881,38 +1337,30 @@ static void draw_macro_rec_anim(pixel_hud_t *hud, bool force_text)
   }
   uint16_t evts = (uint16_t)(bytes / 3U);
 
-  /* Batch 1: Blinking REC dot + dual spinning pixel tape reels */
   rect_batch_t b;
   batch_init(&b);
-  uint16_t dot_col = dot_on ? COL_CORAL : COL_DIM;
+  uint16_t dot_col = dot_on ? th->alert : th->dim;
   batch_add(&b, 12U, 10U, 8U, 8U, dot_col);
   if (dot_on) {
-    batch_add(&b, 14U, 12U, 2U, 2U, COL_WHITE); /* Pixel shine on REC dot */
+    batch_add(&b, 14U, 12U, 2U, 2U, th->text);
   }
-
-  /* Clear reel interiors + tape bridge */
-  batch_add(&b, 26U, 38U, 18U, 18U, COL_DIM);
-  batch_add(&b, 84U, 38U, 18U, 18U, COL_DIM);
-  batch_add(&b, 48U, 42U, 32U, 10U, COL_BG);
-
-  /* Left & right reel rims + center hubs */
-  batch_add(&b, 28U, 40U, 14U, 14U, COL_BORDER);
-  batch_add(&b, 30U, 42U, 10U, 10U, COL_BG);
-  batch_add(&b, 86U, 40U, 14U, 14U, COL_BORDER);
-  batch_add(&b, 88U, 42U, 10U, 10U, COL_BG);
+  batch_add(&b, 26U, 38U, 18U, 18U, th->dim);
+  batch_add(&b, 84U, 38U, 18U, 18U, th->dim);
+  batch_add(&b, 48U, 42U, 32U, 10U, th->bg);
+  batch_add(&b, 28U, 40U, 14U, 14U, th->border);
+  batch_add(&b, 30U, 42U, 10U, 10U, th->bg);
+  batch_add(&b, 86U, 40U, 14U, 14U, th->border);
+  batch_add(&b, 88U, 42U, 10U, 10U, th->bg);
   batch_submit(hud, &b, false);
 
-  /* Batch 2: Rotating pixel-art reel spokes + hub centers + animated tape pulse (<=12 rects) */
   batch_init(&b);
-  uint16_t spk = COL_CYAN;
+  uint16_t spk = th->accent;
   if ((phase & 1U) == 0U) {
-    /* '+' cross orientation */
     batch_add(&b, 34U, 41U, 2U, 12U, spk);
     batch_add(&b, 29U, 46U, 12U, 2U, spk);
     batch_add(&b, 92U, 41U, 2U, 12U, spk);
     batch_add(&b, 87U, 46U, 12U, 2U, spk);
   } else {
-    /* 'x' diagonal orientation */
     batch_add(&b, 31U, 43U, 3U, 3U, spk);
     batch_add(&b, 36U, 48U, 3U, 3U, spk);
     batch_add(&b, 36U, 43U, 3U, 3U, spk);
@@ -922,24 +1370,22 @@ static void draw_macro_rec_anim(pixel_hud_t *hud, bool force_text)
     batch_add(&b, 94U, 43U, 3U, 3U, spk);
     batch_add(&b, 89U, 48U, 3U, 3U, spk);
   }
-  batch_add(&b, 33U, 45U, 4U, 4U, COL_WHITE);
-  batch_add(&b, 91U, 45U, 4U, 4U, COL_WHITE);
+  batch_add(&b, 33U, 45U, 4U, 4U, th->text);
+  batch_add(&b, 91U, 45U, 4U, 4U, th->text);
 
-  /* Animated moving magnetic tape data bars in center window */
   uint8_t wave_x = (uint8_t)(50U + (phase * 6U));
-  batch_add(&b, wave_x, 45U, 4U, 4U, COL_CORAL);
+  batch_add(&b, wave_x, 45U, 4U, 4U, th->alert);
   uint8_t wave_x2 = (uint8_t)(50U + (((phase + 2U) & 3U) * 6U));
-  batch_add(&b, wave_x2, 46U, 4U, 2U, COL_AMBER);
+  batch_add(&b, wave_x2, 46U, 4U, 2U, th->warn);
   batch_submit(hud, &b, false);
 
-  /* Batch 3: Live buffer fill bar (x=14..113, y=95, w=100, h=8) */
   batch_init(&b);
-  batch_add(&b, 13U, 94U, 102U, 10U, COL_BORDER);
-  batch_add(&b, 14U, 95U, 100U, 8U, COL_DIM);
+  batch_add(&b, 13U, 94U, 102U, 10U, th->border);
+  batch_add(&b, 14U, 95U, 100U, 8U, th->dim);
   uint8_t fill_w = (uint8_t)(((uint32_t)bytes * 100U) / MACRO_REC_MAX_BYTES);
   if (fill_w > 100U) fill_w = 100U;
   if (fill_w > 0U) {
-    uint16_t bar_col = (fill_w >= 80U) ? COL_CORAL : ((fill_w >= 50U) ? COL_AMBER : COL_MINT);
+    uint16_t bar_col = (fill_w >= 80U) ? th->alert : ((fill_w >= 50U) ? th->warn : th->good);
     batch_add(&b, 14U, 95U, fill_w, 8U, bar_col);
   }
   bool text_chg = force_text || (bytes != hud->prev_rec_bytes);
@@ -948,37 +1394,35 @@ static void draw_macro_rec_anim(pixel_hud_t *hud, bool force_text)
   if (text_chg) {
     char cbuf[4];
     fmt_wpm3(evts, cbuf);
-    q_text(hud, 46U, 80U, cbuf, COL_WHITE, COL_BG, 1U, false, true);
+    q_text(hud, 46U, 80U, cbuf, th->text, th->bg, 1U, false, true);
     hud->prev_rec_bytes = bytes;
   }
 }
 
-/* ---- Fullscreen 128x128 Pixel-Art Macro Text Editor (5 rows x 19 cols, German ISO) ---- */
+/* ---- Fullscreen 128x128 Macro Text Editor (5 rows x 19 cols, German ISO, themed) ---- */
 
 #define EDIT_VIEW_ROWS 5U
 #define EDIT_VIEW_COLS MACRO_EDITOR_COLS
 
-/* Map one editable macro token to a 1-char German ISO display glyph + semantic color */
-static void macro_tok_to_cell(macro_edit_tok_t tok, char *out_ch, uint16_t *out_fg)
+static void macro_tok_to_cell(hud_theme_t const *th, macro_edit_tok_t tok, char *out_ch, uint16_t *out_fg)
 {
   bool shift  = ((tok.mods & 0x22U) != 0U);
   bool altgr  = ((tok.mods & 0x40U) != 0U);
-  bool combo  = ((tok.mods & 0x9DU) != 0U); /* Ctrl, LAlt, LGui, RGui */
+  bool combo  = ((tok.mods & 0x9DU) != 0U);
   uint8_t hid = tok.hid;
   char ch     = '?';
-  uint16_t fg = combo ? COL_AMBER : COL_WHITE;
+  uint16_t fg = combo ? th->warn : th->text;
 
   if (hid >= (uint8_t)KC_A && hid <= (uint8_t)KC_Z) {
     char base = (char)('a' + (hid - (uint8_t)KC_A));
-    /* German QWERTZ swap: HID Y <-> 'z', HID Z <-> 'y' */
     if (hid == (uint8_t)KC_Y) base = 'z';
     else if (hid == (uint8_t)KC_Z) base = 'y';
     if (altgr && !combo && hid == (uint8_t)KC_Q) {
       ch = '@';
-      fg = COL_MINT;
+      fg = th->good;
     } else if (altgr && !combo && hid == (uint8_t)KC_E) {
-      ch = 'E'; /* Euro sign indicator */
-      fg = COL_MINT;
+      ch = 'E';
+      fg = th->good;
     } else {
       ch = (shift && !combo) ? (char)(base - 'a' + 'A') : base;
     }
@@ -987,15 +1431,15 @@ static void macro_tok_to_cell(macro_edit_tok_t tok, char *out_ch, uint16_t *out_
     static char const k_shft[10] = "!\"$%&/()=";
     uint8_t idx = (uint8_t)(hid - (uint8_t)KC_1);
     if (altgr && !combo) {
-      if (hid == (uint8_t)KC_7)      { ch = '{'; fg = COL_MINT; }
-      else if (hid == (uint8_t)KC_8) { ch = '['; fg = COL_MINT; }
-      else if (hid == (uint8_t)KC_9) { ch = ']'; fg = COL_MINT; }
-      else if (hid == (uint8_t)KC_0) { ch = '}'; fg = COL_MINT; }
+      if (hid == (uint8_t)KC_7)      { ch = '{'; fg = th->good; }
+      else if (hid == (uint8_t)KC_8) { ch = '['; fg = th->good; }
+      else if (hid == (uint8_t)KC_9) { ch = ']'; fg = th->good; }
+      else if (hid == (uint8_t)KC_0) { ch = '}'; fg = th->good; }
       else                           { ch = k_norm[idx]; }
     } else if (shift && !combo) {
       ch = (idx == 9U) ? '=' : k_shft[idx];
       if (idx == 2U) {
-        fg = COL_MINT; /* § on DE Shift+3 */
+        fg = th->good;
       }
     } else {
       ch = k_norm[idx];
@@ -1003,32 +1447,32 @@ static void macro_tok_to_cell(macro_edit_tok_t tok, char *out_ch, uint16_t *out_
   } else {
     switch (hid) {
       case KC_SPC:  ch = ' '; break;
-      case KC_ENT:  ch = '>'; fg = combo ? COL_AMBER : COL_CYAN; break;
-      case KC_TAB:  ch = 'T'; fg = combo ? COL_AMBER : COL_CYAN; break;
-      case KC_BSPC: ch = '<'; fg = combo ? COL_AMBER : COL_CORAL; break;
-      case KC_DEL:  ch = 'X'; fg = combo ? COL_AMBER : COL_CORAL; break;
-      case KC_ESC:  ch = '!'; fg = COL_CORAL; break;
-      case KC_MINS: ch = altgr ? '\\' : (shift ? '?' : 's'); if (!shift && !altgr && !combo) fg = COL_MINT; break;
+      case KC_ENT:  ch = '>'; fg = combo ? th->warn : th->accent; break;
+      case KC_TAB:  ch = 'T'; fg = combo ? th->warn : th->accent; break;
+      case KC_BSPC: ch = '<'; fg = combo ? th->warn : th->alert; break;
+      case KC_DEL:  ch = 'X'; fg = combo ? th->warn : th->alert; break;
+      case KC_ESC:  ch = '!'; fg = th->alert; break;
+      case KC_MINS: ch = altgr ? '\\' : (shift ? '?' : 's'); if (!shift && !altgr && !combo) fg = th->good; break;
       case KC_EQL:  ch = shift ? '`' : '\''; break;
-      case KC_LBRC: ch = shift ? 'U' : 'u'; if (!combo) fg = COL_MINT; break; /* ü/Ü */
+      case KC_LBRC: ch = shift ? 'U' : 'u'; if (!combo) fg = th->good; break;
       case KC_RBRC: ch = altgr ? '~' : (shift ? '*' : '+'); break;
-      case KC_SCLN: ch = shift ? 'O' : 'o'; if (!combo) fg = COL_MINT; break; /* ö/Ö */
-      case KC_QUOT: ch = shift ? 'A' : 'a'; if (!combo) fg = COL_MINT; break; /* ä/Ä */
+      case KC_SCLN: ch = shift ? 'O' : 'o'; if (!combo) fg = th->good; break;
+      case KC_QUOT: ch = shift ? 'A' : 'a'; if (!combo) fg = th->good; break;
       case KC_GRV:  ch = '^'; break;
       case KC_NUHS: ch = shift ? '\'' : '#'; break;
       case KC_NUBS: ch = altgr ? '|' : (shift ? '>' : '<'); break;
       case KC_COMM: ch = shift ? ';' : ','; break;
       case KC_DOT:  ch = shift ? ':' : '.'; break;
       case KC_SLSH: ch = shift ? '_' : '-'; break;
-      case KC_LEFT: ch = '<'; fg = COL_CYAN; break;
-      case KC_RGHT: ch = '>'; fg = COL_CYAN; break;
-      case KC_UP:   ch = '^'; fg = COL_CYAN; break;
-      case KC_DOWN: ch = 'v'; fg = COL_CYAN; break;
+      case KC_LEFT: ch = '<'; fg = th->accent; break;
+      case KC_RGHT: ch = '>'; fg = th->accent; break;
+      case KC_UP:   ch = '^'; fg = th->accent; break;
+      case KC_DOWN: ch = 'v'; fg = th->accent; break;
       default:
         ch = (hid >= (uint8_t)KC_F1 && hid <= (uint8_t)KC_F12) ? 'F'
            : (hid >= 0xE0U && hid <= 0xE7U)                    ? 'M'
                                                                : '*';
-        fg = combo ? COL_AMBER : COL_CYAN;
+        fg = combo ? th->warn : th->accent;
         break;
     }
   }
@@ -1045,8 +1489,8 @@ static uint8_t append_str(char *dst, uint8_t pos, uint8_t max_len, char const *s
   return pos;
 }
 
-/* Format fixed 20-char human-readable inspector line for token under cursor */
-static void fmt_macro_tok_inspector(pixel_hud_live_t const *l, char out[21], uint16_t *out_col)
+static void fmt_macro_tok_inspector(hud_theme_t const *th, pixel_hud_live_t const *l,
+                                    char out[21], uint16_t *out_col)
 {
   memset(out, ' ', 20U);
   out[20] = '\0';
@@ -1064,7 +1508,7 @@ static void fmt_macro_tok_inspector(pixel_hud_live_t const *l, char out[21], uin
 
   if (l->macro_edit_toks == NULL || cur >= l->macro_edit_count) {
     (void)append_str(out, p, 20U, "[END] TYPE...");
-    *out_col = COL_CYAN;
+    *out_col = th->accent;
     return;
   }
 
@@ -1076,9 +1520,9 @@ static void fmt_macro_tok_inspector(pixel_hud_live_t const *l, char out[21], uin
   if (has_mod_prefix && (tok.mods & 0x22U) != 0U) { p = append_str(out, p, 20U, "SHF+"); }
 
   char ch = '?';
-  uint16_t fg = COL_WHITE;
-  macro_tok_to_cell(tok, &ch, &fg);
-  *out_col = has_mod_prefix ? COL_AMBER : fg;
+  uint16_t fg = th->text;
+  macro_tok_to_cell(th, tok, &ch, &fg);
+  *out_col = has_mod_prefix ? th->warn : fg;
 
   switch (tok.hid) {
     case KC_SPC:  (void)append_str(out, p, 20U, "SPACE"); break;
@@ -1123,18 +1567,18 @@ static void fmt_macro_tok_inspector(pixel_hud_live_t const *l, char out[21], uin
 
 static void draw_macro_edit_static(pixel_hud_t *hud)
 {
-  q_fill(hud, 0U, 0U, 128U, 128U, COL_BG, false);
+  hud_theme_t const *th = active_theme(hud);
+  q_fill(hud, 0U, 0U, 128U, 128U, th->bg, false);
 
   rect_batch_t b;
   batch_init(&b);
-  /* Header (y=0..18) + editor frame (x=2..125, y=20..93) + inspector (y=95..109) + footer (y=111..127) */
-  batch_add(&b, 0U, 0U, 128U, 18U, COL_CARD);
-  batch_add(&b, 0U, 18U, 128U, 1U, COL_CYAN);
-  batch_add(&b, 2U, 20U, 124U, 74U, COL_BORDER);
-  batch_add(&b, 3U, 21U, 122U, 72U, COL_BG);
-  batch_add(&b, 0U, 95U, 128U, 15U, COL_CARD);
-  batch_add(&b, 0U, 110U, 128U, 1U, COL_BORDER);
-  batch_add(&b, 0U, 111U, 128U, 17U, COL_CARD);
+  batch_add(&b, 0U, 0U, 128U, 18U, th->header_bg);
+  batch_add(&b, 0U, 18U, 128U, 1U, th->accent);
+  batch_add(&b, 2U, 20U, 124U, 74U, th->border);
+  batch_add(&b, 3U, 21U, 122U, 72U, th->bg);
+  batch_add(&b, 0U, 95U, 128U, 15U, th->card);
+  batch_add(&b, 0U, 110U, 128U, 1U, th->border);
+  batch_add(&b, 0U, 111U, 128U, 17U, th->header_bg);
   batch_submit(hud, &b, false);
 
   char hdr[10] = "EDIT M0  ";
@@ -1147,15 +1591,15 @@ static void draw_macro_edit_static(pixel_hud_t *hud)
     hdr[7] = (char)('0' + (s - 10U));
     hdr[8] = '\0';
   }
-  q_text(hud, 4U, 3U, hdr, COL_CYAN, COL_CARD, 1U, false, false);
-  q_text(hud, 4U, 113U, "FN:SAVE", COL_MINT, COL_CARD, 1U, false, false);
-  q_text(hud, 68U, 113U, "KNOB:QUIT", COL_CORAL, COL_CARD, 1U, false, false);
+  q_text(hud, 4U, 3U, hdr, th->accent, th->header_bg, 1U, false, false);
+  q_text(hud, 4U, 113U, "FN:SAVE", th->good, th->header_bg, 1U, false, false);
+  q_text(hud, 68U, 113U, "KNOB:QUIT", th->alert, th->header_bg, 1U, false, false);
 }
 
-/* Render one 19-char editor line using color run-length grouping (fast & queue-safe) */
 static void draw_macro_edit_row(pixel_hud_t *hud, uint8_t vis_row, bool flush)
 {
-  pixel_hud_live_t const *l = &hud->live;
+  hud_theme_t const      *th = active_theme(hud);
+  pixel_hud_live_t const *l  = &hud->live;
   uint16_t base = (uint16_t)((uint16_t)(hud->edit_scroll_row + vis_row) * EDIT_VIEW_COLS);
   uint8_t  y    = (uint8_t)(22U + (vis_row * 14U));
 
@@ -1167,15 +1611,15 @@ static void draw_macro_edit_row(pixel_hud_t *hud, uint8_t vis_row, bool flush)
     uint16_t idx = (uint16_t)(base + col);
     bool is_cur  = (idx == l->macro_edit_cursor);
     char ch      = ' ';
-    uint16_t fg  = COL_WHITE;
-    uint16_t bg  = COL_BG;
+    uint16_t fg  = th->text;
+    uint16_t bg  = th->bg;
 
     if (l->macro_edit_toks != NULL && idx < l->macro_edit_count) {
-      macro_tok_to_cell(l->macro_edit_toks[idx], &ch, &fg);
+      macro_tok_to_cell(th, l->macro_edit_toks[idx], &ch, &fg);
     }
     if (is_cur) {
-      bg = hud->edit_blink_on ? COL_CYAN : COL_AMBER;
-      fg = COL_BG;
+      bg = hud->edit_blink_on ? th->accent : th->warn;
+      fg = th->cursor_fg;
     }
     chars[col] = ch;
     fgs[col]   = fg;
@@ -1200,7 +1644,8 @@ static void draw_macro_edit_row(pixel_hud_t *hud, uint8_t vis_row, bool flush)
 
 static void draw_macro_edit_meta(pixel_hud_t *hud, bool flush)
 {
-  pixel_hud_live_t const *l = &hud->live;
+  hud_theme_t const      *th = active_theme(hud);
+  pixel_hud_live_t const *l  = &hud->live;
   uint16_t cnt = l->macro_edit_count;
   if (cnt > MACRO_EDITOR_MAX_TOKS) cnt = MACRO_EDITOR_MAX_TOKS;
 
@@ -1208,30 +1653,25 @@ static void draw_macro_edit_meta(pixel_hud_t *hud, bool flush)
   cbuf[0] = (cnt >= 100U) ? (char)('0' + ((cnt / 100U) % 10U)) : ' ';
   cbuf[1] = (cnt >= 10U)  ? (char)('0' + ((cnt / 10U) % 10U))  : ' ';
   cbuf[2] = (char)('0' + (cnt % 10U));
-  cbuf[3] = '/';
-  cbuf[4] = '2';
-  cbuf[5] = '5';
-  cbuf[6] = '6';
-  cbuf[7] = '\0';
-  uint16_t ccol = (cnt >= 240U) ? COL_CORAL : ((cnt >= 192U) ? COL_AMBER : COL_WHITE);
-  q_text(hud, 82U, 3U, cbuf, ccol, COL_CARD, 1U, false, false);
+  cbuf[3] = '/'; cbuf[4] = '2'; cbuf[5] = '5'; cbuf[6] = '6'; cbuf[7] = '\0';
+  uint16_t ccol = (cnt >= 240U) ? th->alert : ((cnt >= 192U) ? th->warn : th->text);
+  q_text(hud, 82U, 3U, cbuf, ccol, th->header_bg, 1U, false, false);
 
   char insp[21];
-  uint16_t icol = COL_WHITE;
-  fmt_macro_tok_inspector(l, insp, &icol);
-  q_text(hud, 4U, 96U, insp, icol, COL_CARD, 1U, false, false);
+  uint16_t icol = th->text;
+  fmt_macro_tok_inspector(th, l, insp, &icol);
+  q_text(hud, 4U, 96U, insp, icol, th->card, 1U, false, false);
 
-  /* Vertical scrollbar @ (122, 22, w=2, h=70) */
   rect_batch_t b;
   batch_init(&b);
-  batch_add(&b, 122U, 22U, 2U, 70U, COL_DIM);
+  batch_add(&b, 122U, 22U, 2U, 70U, th->dim);
   uint8_t total_rows = (uint8_t)((cnt / EDIT_VIEW_COLS) + 1U);
   if (total_rows > EDIT_VIEW_ROWS) {
     uint8_t thumb_h = (uint8_t)((70U * EDIT_VIEW_ROWS) / total_rows);
     if (thumb_h < 10U) thumb_h = 10U;
     uint8_t max_scroll = (uint8_t)(total_rows - EDIT_VIEW_ROWS);
     uint8_t thumb_y = (uint8_t)(22U + (((uint32_t)hud->edit_scroll_row * (70U - thumb_h)) / max_scroll));
-    batch_add(&b, 122U, thumb_y, 2U, thumb_h, COL_CYAN);
+    batch_add(&b, 122U, thumb_y, 2U, thumb_h, th->accent);
   }
   batch_submit(hud, &b, flush);
 }
@@ -1274,8 +1714,7 @@ static void step_macro_edit_hud(pixel_hud_t *hud, uint32_t now_ms)
     }
   }
 
-  /* Drain dirty rows + meta without ever overflowing the 40-op UART7 queue */
-  while (hud->edit_dirty_mask != 0U && hud->q_count <= 18U) {
+  while (hud->edit_dirty_mask != 0U && hud->q_count <= 24U) {
     uint8_t bit = 0U;
     while (bit < 6U && (hud->edit_dirty_mask & (uint8_t)(1U << bit)) == 0U) {
       bit++;
@@ -1292,16 +1731,6 @@ static void step_macro_edit_hud(pixel_hud_t *hud, uint32_t now_ms)
       draw_macro_edit_meta(hud, last_piece);
     }
   }
-}
-
-static void fmt_u8_zero2(uint8_t v, char out[3])
-{
-  if (v > 99U) {
-    v = 99U;
-  }
-  out[0] = (char)('0' + (v / 10U));
-  out[1] = (char)('0' + (v % 10U));
-  out[2] = '\0';
 }
 
 static void fmt_keys_compact(uint32_t keys, char out[8])
@@ -1352,70 +1781,63 @@ static uint32_t compute_saver_hash(pixel_hud_t const *hud)
   h = (h ^ l->session_keys) * 16777619U;
   h = (h ^ (c->hall_rt_enabled ? 1U : 0U)) * 16777619U;
   h = (h ^ c->hall_socd_mode) * 16777619U;
+  h = (h ^ c->tft_theme) * 16777619U;
   return h;
 }
 
-/* Draw static chrome of fullscreen pixel-art idle screensaver (128x128) */
 static void draw_screensaver_static(pixel_hud_t *hud)
 {
-  q_fill(hud, 0U, 0U, 128U, 128U, COL_BG, false);
+  hud_theme_t const *th = active_theme(hud);
+  q_fill(hud, 0U, 0U, 128U, 128U, th->bg, false);
 
   rect_batch_t b;
   batch_init(&b);
-  /* Top sky divider + center hero clock card (x=4..123, y=25..68) */
-  batch_add(&b, 0U, 22U, 128U, 1U, COL_BORDER);
-  batch_add(&b, 4U, 25U, 120U, 43U, COL_BORDER);
-  batch_add(&b, 5U, 26U, 118U, 41U, COL_CARD);
+  batch_add(&b, 0U, 22U, 128U, 1U, th->border);
+  batch_add(&b, 4U, 25U, 120U, 43U, th->border);
+  batch_add(&b, 5U, 26U, 118U, 41U, th->card);
+  batch_add(&b, 4U, 72U, 58U, 36U, th->border);
+  batch_add(&b, 5U, 73U, 56U, 34U, th->card);
+  batch_add(&b, 66U, 72U, 58U, 36U, th->border);
+  batch_add(&b, 67U, 73U, 56U, 34U, th->card);
+  batch_add(&b, 0U, 111U, 128U, 1U, th->border);
+  batch_add(&b, 0U, 112U, 128U, 16U, th->card);
 
-  /* Two system telemetry cards (y=72..108) */
-  batch_add(&b, 4U, 72U, 58U, 36U, COL_BORDER);
-  batch_add(&b, 5U, 73U, 56U, 34U, COL_CARD);
-  batch_add(&b, 66U, 72U, 58U, 36U, COL_BORDER);
-  batch_add(&b, 67U, 73U, 56U, 34U, COL_CARD);
-
-  /* Bottom status strip (y=111..127) */
-  batch_add(&b, 0U, 111U, 128U, 1U, COL_BORDER);
-  batch_add(&b, 0U, 112U, 128U, 16U, COL_CARD);
-
-  /* Pixel-art crescent moon in top-left sky (x=6..15, y=4..14) */
-  batch_add(&b, 8U, 4U, 5U, 2U, COL_AMBER);
-  batch_add(&b, 6U, 6U, 4U, 6U, COL_AMBER);
-  batch_add(&b, 8U, 12U, 5U, 2U, COL_AMBER);
-  batch_add(&b, 10U, 6U, 3U, 6U, COL_BG); /* Crescent cutout */
+  batch_add(&b, 8U, 4U, 5U, 2U, th->warn);
+  batch_add(&b, 6U, 6U, 4U, 6U, th->warn);
+  batch_add(&b, 8U, 12U, 5U, 2U, th->warn);
+  batch_add(&b, 10U, 6U, 3U, 6U, th->bg);
   batch_submit(hud, &b, false);
 }
 
-/* Draw live screensaver telemetry cards + top battery + bottom lock/keystroke strip */
 static void draw_screensaver_sysinfo(pixel_hud_t *hud, bool flush)
 {
-  pixel_hud_live_t const   *l = &hud->live;
-  tk75_persist_cfg_t const *c = hud->cfg;
+  hud_theme_t const        *th = active_theme(hud);
+  pixel_hud_live_t const   *l  = &hud->live;
+  tk75_persist_cfg_t const *c  = hud->cfg;
 
-  /* Top-right power indicator (USB charging bolt / USB full plug / battery) + battery icon */
   rect_batch_t b;
   batch_init(&b);
-  batch_add(&b, 63U, 3U, 30U, 15U, COL_BG); /* Clear previous bolt/plug/battery cleanly */
-  uint16_t batt_col = batch_add_battery_widget(&b, 5U, l);
+  batch_add(&b, 63U, 3U, 30U, 15U, th->bg);
+  uint16_t batt_col = batch_add_battery_widget(&b, 5U, l, th);
   batch_submit(hud, &b, false);
 
-  q_text(hud, 20U, 5U, l->rtc_valid ? "CLK" : "UP ", l->rtc_valid ? COL_CYAN : COL_AMBER,
-         COL_BG, 1U, false, false);
+  q_text(hud, 20U, 5U, l->rtc_valid ? "CLK" : "UP ", l->rtc_valid ? th->accent : th->warn,
+         th->bg, 1U, false, false);
   char bstr[5];
   fmt_u8_pct(l->battery_pct, bstr);
-  q_text(hud, 95U, 4U, bstr, batt_col, COL_BG, 1U, false, false);
+  q_text(hud, 95U, 4U, bstr, batt_col, th->bg, 1U, false, false);
 
-  /* Left card: Transport/poll rate + OS/Layer */
   char tr_str[8] = "USB 8K";
-  uint16_t tr_col = COL_CYAN;
+  uint16_t tr_col = th->accent;
   if (l->conn_mode == 1U) {
     memcpy(tr_str, "2.4 1K", 7U);
-    tr_col = COL_MINT;
+    tr_col = th->good;
   } else if (l->conn_mode == 2U) {
     tr_str[0] = 'B'; tr_str[1] = 'T'; tr_str[2] = (char)('1' + (l->bt_slot % 3U));
     tr_str[3] = ' '; tr_str[4] = 'L'; tr_str[5] = 'E'; tr_str[6] = '\0';
-    tr_col = COL_AMBER;
+    tr_col = th->warn;
   }
-  q_text(hud, 9U, 76U, tr_str, tr_col, COL_CARD, 1U, false, false);
+  q_text(hud, 9U, 76U, tr_str, tr_col, th->card, 1U, false, false);
 
   char os_str[7];
   if (c->mac_mode) {
@@ -1423,13 +1845,9 @@ static void draw_screensaver_sysinfo(pixel_hud_t *hud, bool flush)
   } else {
     os_str[0] = 'W'; os_str[1] = 'I'; os_str[2] = 'N';
   }
-  os_str[3] = ' ';
-  os_str[4] = 'L';
-  os_str[5] = (char)('0' + (l->active_layer & 3U));
-  os_str[6] = '\0';
-  q_text(hud, 9U, 92U, os_str, COL_WHITE, COL_CARD, 1U, false, false);
+  os_str[3] = ' '; os_str[4] = 'L'; os_str[5] = (char)('0' + (l->active_layer & 3U)); os_str[6] = '\0';
+  q_text(hud, 9U, 92U, os_str, th->text, th->card, 1U, false, false);
 
-  /* Right card: Hall actuation + RT / Peak WPM */
   char act_str[8];
   uint16_t tenths = (uint16_t)((c->hall_actuation_um + 50U) / 100U);
   if (tenths > 99U) tenths = 99U;
@@ -1441,90 +1859,70 @@ static void draw_screensaver_sysinfo(pixel_hud_t *hud, bool flush)
   } else {
     act_str[3] = 'm'; act_str[4] = 'm'; act_str[5] = ' '; act_str[6] = '\0';
   }
-  q_text(hud, 71U, 76U, act_str, c->hall_rt_enabled ? COL_MINT : COL_CYAN, COL_CARD, 1U, false, false);
+  q_text(hud, 71U, 76U, act_str, c->hall_rt_enabled ? th->good : th->accent, th->card, 1U, false, false);
 
   char pk_str[8] = "PK    ";
   char w3[4];
   fmt_wpm3(l->peak_wpm, w3);
-  pk_str[3] = w3[0];
-  pk_str[4] = w3[1];
-  pk_str[5] = w3[2];
-  pk_str[6] = '\0';
-  q_text(hud, 71U, 92U, pk_str, COL_AMBER, COL_CARD, 1U, false, false);
+  pk_str[3] = w3[0]; pk_str[4] = w3[1]; pk_str[5] = w3[2]; pk_str[6] = '\0';
+  q_text(hud, 71U, 92U, pk_str, th->warn, th->card, 1U, false, false);
 
-  /* Bottom strip: Lock flags or SOCD on left, Session keystrokes on right */
   char left_b[10] = "TYPE:WAKE";
-  uint16_t left_col = COL_MUTED;
+  uint16_t left_col = th->muted;
   if ((l->host_leds & 0x02U) != 0U) {
     memcpy(left_b, "CAPS ON  ", 10U);
-    left_col = COL_CORAL;
+    left_col = th->alert;
   } else if (c->win_lock != 0U) {
     memcpy(left_b, "WIN LOCK ", 10U);
-    left_col = COL_AMBER;
+    left_col = th->warn;
   } else if ((l->host_leds & 0x01U) != 0U) {
     memcpy(left_b, "NUM LOCK ", 10U);
-    left_col = COL_CYAN;
+    left_col = th->accent;
   } else if (c->hall_socd_mode != HALL_SOCD_OFF) {
-    memcpy(left_b, (c->hall_socd_mode == HALL_SOCD_LAST_PRIORITY) ? "SOCD:LAST" : "SOCD:NEUT", 10U);
-    left_col = COL_MINT;
+    char const *sm = (c->hall_socd_mode == HALL_SOCD_LAST_PRIORITY)  ? "SOCD:LAST"
+                   : (c->hall_socd_mode == HALL_SOCD_NEUTRAL)        ? "SOCD:NEUT"
+                                                                     : "SOCD:1ST ";
+    memcpy(left_b, sm, 10U);
+    left_col = th->good;
   }
-  q_text(hud, 5U, 114U, left_b, left_col, COL_CARD, 1U, false, false);
+  q_text(hud, 5U, 114U, left_b, left_col, th->card, 1U, false, false);
 
   char kbuf[8];
   fmt_keys_compact(l->session_keys, kbuf);
-  q_text(hud, 82U, 114U, kbuf, COL_WHITE, COL_CARD, 1U, false, flush);
+  q_text(hud, 82U, 114U, kbuf, th->text, th->card, 1U, false, flush);
 
   hud->prev_saver_hash = compute_saver_hash(hud);
 }
 
-/* Draw animated screensaver tick: twinkling stars + big 2x pixel clock + seconds sweep bar */
 static void draw_screensaver_anim(pixel_hud_t *hud, bool force_all)
 {
-  pixel_hud_live_t const   *l = &hud->live;
-  tk75_persist_cfg_t const *c = hud->cfg;
+  hud_theme_t const      *th = active_theme(hud);
+  pixel_hud_live_t const *l  = &hud->live;
   uint8_t phase = hud->saver_phase & 3U;
 
-  uint8_t disp_h = 0U;
-  uint8_t disp_m = 0U;
-  uint8_t disp_s = 0U;
-  if (l->rtc_valid) {
-    disp_h = l->rtc_hour;
-    if (c->tft_clock_24h == 0U) {
-      disp_h = (uint8_t)(disp_h % 12U);
-      if (disp_h == 0U) disp_h = 12U;
-    }
-    disp_m = l->rtc_min;
-    disp_s = l->rtc_sec;
-  } else {
-    uint32_t up = l->uptime_sec;
-    disp_h = (uint8_t)((up / 3600U) % 100U);
-    disp_m = (uint8_t)((up / 60U) % 60U);
-    disp_s = (uint8_t)(up % 60U);
-  }
+  uint8_t disp_h = 0U, disp_m = 0U, disp_s = 0U;
+  get_display_hms(hud, &disp_h, &disp_m, &disp_s);
 
-  /* Twinkling pixel-art stars in top sky (x=40..61, y=3..18, clear of USB/bolt icon @ x=64..73) */
   rect_batch_t b;
   batch_init(&b);
-  batch_add(&b, 40U, 3U, 22U, 17U, COL_BG);
-  batch_add(&b, 42U, 6U, 2U, 2U, (phase == 0U) ? COL_WHITE : COL_DIM);
-  batch_add(&b, 50U, 13U, 2U, 2U, (phase == 1U) ? COL_CYAN : COL_BORDER);
-  batch_add(&b, 57U, 7U, 2U, 2U, (phase == 2U) ? COL_AMBER : COL_DIM);
-  batch_add(&b, 45U, 16U, 1U, 1U, (phase == 3U) ? COL_WHITE : COL_BORDER);
-  batch_add(&b, 59U, 15U, 2U, 2U, ((phase & 1U) == 0U) ? COL_CYAN : COL_DIM);
+  batch_add(&b, 40U, 3U, 22U, 17U, th->bg);
+  batch_add(&b, 42U, 6U, 2U, 2U, (phase == 0U) ? th->text : th->dim);
+  batch_add(&b, 50U, 13U, 2U, 2U, (phase == 1U) ? th->accent : th->border);
+  batch_add(&b, 57U, 7U, 2U, 2U, (phase == 2U) ? th->warn : th->dim);
+  batch_add(&b, 45U, 16U, 1U, 1U, (phase == 3U) ? th->text : th->border);
+  batch_add(&b, 59U, 15U, 2U, 2U, ((phase & 1U) == 0U) ? th->accent : th->dim);
 
-  /* Seconds progress bar under big clock (x=14..113, y=58..63: clear full tip height first!) */
-  batch_add(&b, 14U, 58U, 100U, 6U, COL_CARD);
-  batch_add(&b, 14U, 59U, 100U, 4U, COL_DIM);
+  batch_add(&b, 14U, 58U, 100U, 6U, th->card);
+  batch_add(&b, 14U, 59U, 100U, 4U, th->dim);
   uint8_t sec_w = (uint8_t)(((uint32_t)disp_s * 100U) / 59U);
   if (sec_w > 100U) sec_w = 100U;
   if (sec_w > 0U) {
-    batch_add(&b, 14U, 59U, sec_w, 4U, COL_CYAN);
+    batch_add(&b, 14U, 59U, sec_w, 4U, th->accent);
   }
   uint8_t tip_x = (uint8_t)(14U + ((sec_w > 2U) ? (sec_w - 2U) : 0U));
-  batch_add(&b, tip_x, 58U, 2U, 6U, COL_WHITE);
+  batch_add(&b, tip_x, 58U, 2U, 6U, th->text);
   batch_submit(hud, &b, false);
 
-  /* Giant 2x pixel clock digits "HH:MM" @ (34, 30) with blinking ':' */
   bool time_chg = force_all || (disp_h != hud->prev_saver_hour) ||
                   (disp_m != hud->prev_saver_min) ||
                   (l->rtc_valid != hud->prev_saver_rtc_valid);
@@ -1533,14 +1931,14 @@ static void draw_screensaver_anim(pixel_hud_t *hud, bool force_all)
     char hh[3], mm[3];
     fmt_u8_zero2(disp_h, hh);
     fmt_u8_zero2(disp_m, mm);
-    q_text(hud, 34U, 30U, hh, COL_WHITE, COL_CARD, 2U, false, false);
-    q_text(hud, 70U, 30U, mm, COL_WHITE, COL_CARD, 2U, false, false);
+    q_text(hud, 34U, 30U, hh, th->text, th->card, 2U, false, false);
+    q_text(hud, 70U, 30U, mm, th->text, th->card, 2U, false, false);
     hud->prev_saver_hour      = disp_h;
     hud->prev_saver_min       = disp_m;
     hud->prev_saver_rtc_valid = l->rtc_valid;
   }
-  q_text(hud, 58U, 30U, ":", ((phase & 1U) == 0U) ? COL_CYAN : COL_DIM,
-         COL_CARD, 2U, false, !info_chg);
+  q_text(hud, 58U, 30U, ":", ((phase & 1U) == 0U) ? th->accent : th->dim,
+         th->card, 2U, false, !info_chg);
   hud->prev_saver_sec = disp_s;
 
   if (info_chg) {
@@ -1548,36 +1946,32 @@ static void draw_screensaver_anim(pixel_hud_t *hud, bool force_all)
   }
 }
 
-/* Draw static chrome of fullscreen interactive 82-key Hall calibration screen (128x128) */
+/* Fullscreen interactive 82-key Hall calibration screen (128x128, themed) */
 static void draw_cal_static(pixel_hud_t *hud)
 {
-  q_fill(hud, 0U, 0U, 128U, 128U, COL_BG, false);
+  hud_theme_t const *th = active_theme(hud);
+  q_fill(hud, 0U, 0U, 128U, 128U, th->bg, false);
 
   rect_batch_t b;
   batch_init(&b);
-  /* Header bar (y=0..18) + footer bar (y=111..127) */
-  batch_add(&b, 0U, 0U, 128U, 18U, COL_CARD);
-  batch_add(&b, 0U, 18U, 128U, 1U, COL_BORDER);
-  batch_add(&b, 0U, 111U, 128U, 1U, COL_BORDER);
-  batch_add(&b, 0U, 112U, 128U, 16U, COL_CARD);
-
-  /* Strength bar outer frame (x=9..118, y=90..101) */
-  batch_add(&b, 9U, 89U, 110U, 12U, COL_BORDER);
-  batch_add(&b, 10U, 90U, 108U, 10U, COL_DIM);
-
-  /* Footer overall progress bar frame (x=6..66, y=117..122) */
-  batch_add(&b, 6U, 117U, 60U, 6U, COL_DIM);
+  batch_add(&b, 0U, 0U, 128U, 18U, th->header_bg);
+  batch_add(&b, 0U, 18U, 128U, 1U, th->border);
+  batch_add(&b, 0U, 111U, 128U, 1U, th->border);
+  batch_add(&b, 0U, 112U, 128U, 16U, th->header_bg);
+  batch_add(&b, 9U, 89U, 110U, 12U, th->border);
+  batch_add(&b, 10U, 90U, 108U, 10U, th->dim);
+  batch_add(&b, 6U, 117U, 60U, 6U, th->dim);
   batch_submit(hud, &b, false);
 
-  q_text(hud, 4U, 3U, "HALL CAL", COL_CYAN, COL_CARD, 1U, false, false);
-  q_text(hud, 10U, 75U, "FORCE", COL_MUTED, COL_BG, 1U, false, false);
-  q_text(hud, 74U, 114U, "KNOB:ESC", COL_MUTED, COL_CARD, 1U, false, false);
+  q_text(hud, 4U, 3U, "HALL CAL", th->accent, th->header_bg, 1U, false, false);
+  q_text(hud, 10U, 75U, "FORCE", th->muted, th->bg, 1U, false, false);
+  q_text(hud, 74U, 114U, "KNOB:ESC", th->muted, th->header_bg, 1U, false, false);
 }
 
-/* Draw dynamic calibration elements: counter, giant keycap symbol, live strength bar, progress */
 static void draw_cal_dynamic(pixel_hud_t *hud, bool force_all)
 {
-  pixel_hud_live_t const *l = &hud->live;
+  hud_theme_t const      *th = active_theme(hud);
+  pixel_hud_live_t const *l  = &hud->live;
   bool cnt_chg = force_all || (l->cal_done_count != hud->prev_cal_done);
   bool key_chg = force_all || (l->cal_key_done != hud->prev_cal_key_done) ||
                  (strncmp(l->cal_label, hud->prev_cal_label, 4U) != 0);
@@ -1587,39 +1981,36 @@ static void draw_cal_dynamic(pixel_hud_t *hud, bool force_all)
     return;
   }
 
-  /* Keycap card + strength bar + footer progress bar in 1 atomic batch */
   rect_batch_t b;
   batch_init(&b);
 
   if (key_chg) {
-    uint16_t kborder = l->cal_key_done ? COL_MINT
-                     : ((l->cal_strength_pct > 0U) ? COL_CYAN : COL_BORDER);
+    uint16_t kborder = l->cal_key_done ? th->good
+                     : ((l->cal_strength_pct > 0U) ? th->accent : th->border);
     batch_add(&b, 14U, 23U, 100U, 48U, kborder);
-    batch_add(&b, 16U, 25U, 96U, 44U, COL_CARD);
-    /* Subtle inner keycap top bevel */
-    batch_add(&b, 18U, 26U, 92U, 2U, l->cal_key_done ? COL_MINT : COL_BORDER);
+    batch_add(&b, 16U, 25U, 96U, 44U, th->card);
+    batch_add(&b, 18U, 26U, 92U, 2U, l->cal_key_done ? th->good : th->border);
   }
 
   if (pct_chg) {
-    batch_add(&b, 10U, 90U, 108U, 10U, COL_DIM);
+    batch_add(&b, 10U, 90U, 108U, 10U, th->dim);
     uint8_t fw = (uint8_t)(((uint32_t)l->cal_strength_pct * 108U) / 100U);
     if (fw > 108U) fw = 108U;
     if (fw > 0U) {
-      uint16_t scol = l->cal_key_done ? COL_MINT
-                    : ((l->cal_strength_pct >= 65U) ? COL_AMBER : COL_CYAN);
+      uint16_t scol = l->cal_key_done ? th->good
+                    : ((l->cal_strength_pct >= 65U) ? th->warn : th->accent);
       batch_add(&b, 10U, 90U, fw, 10U, scol);
     }
-    /* Calibrated depth marker tick at ~35% */
-    batch_add(&b, 48U, 89U, 2U, 12U, COL_WHITE);
+    batch_add(&b, 48U, 89U, 2U, 12U, th->text);
   }
 
   if (cnt_chg) {
     uint8_t tot = (l->cal_total_keys > 0U) ? l->cal_total_keys : 82U;
     uint8_t pw  = (uint8_t)(((uint32_t)l->cal_done_count * 60U) / tot);
     if (pw > 60U) pw = 60U;
-    batch_add(&b, 6U, 117U, 60U, 6U, COL_DIM);
+    batch_add(&b, 6U, 117U, 60U, 6U, th->dim);
     if (pw > 0U) {
-      batch_add(&b, 6U, 117U, pw, 6U, COL_MINT);
+      batch_add(&b, 6U, 117U, pw, 6U, th->good);
     }
   }
   bool any_text = cnt_chg || key_chg || pct_chg;
@@ -1627,12 +2018,11 @@ static void draw_cal_dynamic(pixel_hud_t *hud, bool force_all)
 
   if (cnt_chg) {
     uint8_t tot = (l->cal_total_keys > 0U) ? l->cal_total_keys : 82U;
-    char cstr[6];
-    char d2[3], t2[3];
+    char cstr[6], d2[3], t2[3];
     fmt_u8_zero2(l->cal_done_count, d2);
     fmt_u8_zero2(tot, t2);
     cstr[0] = d2[0]; cstr[1] = d2[1]; cstr[2] = '/'; cstr[3] = t2[0]; cstr[4] = t2[1]; cstr[5] = '\0';
-    q_text(hud, 92U, 3U, cstr, COL_MINT, COL_CARD, 1U, false, !(key_chg || pct_chg));
+    q_text(hud, 92U, 3U, cstr, th->good, th->header_bg, 1U, false, !(key_chg || pct_chg));
     hud->prev_cal_done = l->cal_done_count;
   }
 
@@ -1643,11 +2033,11 @@ static void draw_cal_dynamic(pixel_hud_t *hud, bool force_all)
     size_t len   = strlen(lbl);
     uint8_t sc   = (len <= 1U) ? 3U : 2U;
     uint8_t tw   = (uint8_t)(len * 6U * sc);
-    uint8_t th   = (uint8_t)(12U * sc);
+    uint8_t th_h = (uint8_t)(12U * sc);
     uint8_t tx   = (tw < 96U) ? (uint8_t)(16U + ((96U - tw) / 2U)) : 18U;
-    uint8_t ty   = (th < 44U) ? (uint8_t)(25U + ((44U - th) / 2U)) : 28U;
-    uint16_t kcol = l->cal_key_done ? COL_MINT : COL_WHITE;
-    q_text(hud, tx, ty, lbl, kcol, COL_CARD, sc, false, !pct_chg);
+    uint8_t ty   = (th_h < 44U) ? (uint8_t)(25U + ((44U - th_h) / 2U)) : 28U;
+    uint16_t kcol = l->cal_key_done ? th->good : th->text;
+    q_text(hud, tx, ty, lbl, kcol, th->card, sc, false, !pct_chg);
     memcpy(hud->prev_cal_label, lbl, 5U);
     hud->prev_cal_key_done = l->cal_key_done;
   }
@@ -1659,47 +2049,31 @@ static void draw_cal_dynamic(pixel_hud_t *hud, bool force_all)
     } else {
       fmt_u8_pct(l->cal_strength_pct, pstr);
     }
-    q_text(hud, 94U, 75U, pstr, l->cal_key_done ? COL_MINT : COL_CYAN, COL_BG, 1U, false, true);
+    q_text(hud, 94U, 75U, pstr, l->cal_key_done ? th->good : th->accent, th->bg, 1U, false, true);
     hud->prev_cal_pct = l->cal_strength_pct;
   }
 }
 
-static void render_wipe_step(pixel_hud_t *hud)
+static void invalidate_render_cache(pixel_hud_t *hud)
 {
-  /* 3-step horizontal pixel-art cyan scanline wipe across y=19..110 (zero underflow, zero residue) */
-  uint8_t step = hud->wipe_step;
-  rect_batch_t b;
-  batch_init(&b);
-
-  if (hud->wipe_dir >= 0) {
-    if (step == 1U) {
-      batch_add(&b, 0U, 19U, 44U, 92U, COL_BG);
-      batch_add(&b, 41U, 19U, 3U, 92U, COL_CYAN);
-    } else if (step == 2U) {
-      batch_add(&b, 41U, 19U, 45U, 92U, COL_BG);
-      batch_add(&b, 83U, 19U, 3U, 92U, COL_CYAN);
-    } else {
-      batch_add(&b, 83U, 19U, 45U, 92U, COL_BG);
-    }
-  } else {
-    if (step == 1U) {
-      batch_add(&b, 84U, 19U, 44U, 92U, COL_BG);
-      batch_add(&b, 84U, 19U, 3U, 92U, COL_CYAN);
-    } else if (step == 2U) {
-      batch_add(&b, 42U, 19U, 45U, 92U, COL_BG);
-      batch_add(&b, 42U, 19U, 3U, 92U, COL_CYAN);
-    } else {
-      batch_add(&b, 0U, 19U, 45U, 92U, COL_BG);
-    }
-  }
-  batch_submit(hud, &b, true);
+  hud->prev_header_hash     = 0U;
+  hud->prev_badges_hash     = 0xFFU;
+  hud->prev_wpm             = 0xFFFFU;
+  hud->prev_travel_disp     = 0xFFFFU;
+  hud->prev_home_hour       = 0xFFU;
+  hud->prev_home_min        = 0xFFU;
+  hud->prev_home_sec_odd    = 0xFFU;
+  hud->prev_saver_hash      = 0U;
+  hud->prev_saver_hour      = 0xFFU;
+  hud->prev_saver_min       = 0xFFU;
+  hud->prev_saver_sec       = 0xFFU;
+  hud->full_redraw_needed   = true;
 }
 
-static void start_page_transition(pixel_hud_t *hud, uint8_t new_page, int8_t dir)
+/* Instant, zero-animation page switch */
+static void switch_page_instant(pixel_hud_t *hud, uint8_t new_page)
 {
   hud->page               = (uint8_t)(new_page % PIXEL_PAGE_COUNT);
-  hud->wipe_step          = 1U;
-  hud->wipe_dir           = dir;
   hud->full_redraw_needed = true;
 }
 
@@ -1714,19 +2088,25 @@ void pixel_hud_init(pixel_hud_t *hud, tk75_persist_cfg_t *cfg,
   hud->send_fn            = send_fn;
   hud->send_ctx           = send_ctx;
   hud->page               = PIXEL_PAGE_HOME;
+  hud->applied_theme      = (cfg != NULL) ? normalize_theme_id(cfg->tft_theme) : 0U;
   hud->applied_tft_brt    = 0xFFU;
   hud->macro_play_req     = 0xFFU;
-  hud->full_redraw_needed = true;
+  invalidate_render_cache(hud);
 }
 
 bool pixel_hud_is_active(pixel_hud_t const *hud)
 {
-  return (hud != NULL) && hud->detected && !hud->stock_ui_mode;
+  return (hud != NULL) && hud->detected;
 }
 
 bool pixel_hud_is_menu_open(pixel_hud_t const *hud)
 {
   return (hud != NULL) && hud->menu_open;
+}
+
+uint8_t pixel_hud_get_theme(pixel_hud_t const *hud)
+{
+  return (hud != NULL && hud->cfg != NULL) ? normalize_theme_id(hud->cfg->tft_theme) : 0U;
 }
 
 void pixel_hud_on_rx(pixel_hud_t *hud, uart7_rx_frame_t const *frame)
@@ -1742,12 +2122,12 @@ void pixel_hud_on_rx(pixel_hud_t *hud, uart7_rx_frame_t const *frame)
     hud->patch_minor = frame->payload[2];
     if (!hud->detected) {
       hud->detected           = true;
-      hud->stock_ui_mode      = false;
-      hud->full_redraw_needed = true;
+      hud->applied_theme      = (hud->cfg != NULL) ? normalize_theme_id(hud->cfg->tft_theme) : 0U;
       hud->tft_brt_dirty      = true;
       hud->applied_tft_brt    = 0xFFU;
       hud->brt_reapply_left   = 3U;
-      hud->brt_reapply_ms     = 0U;
+      hud->brt_reapply_armed  = false;
+      invalidate_render_cache(hud);
       uint8_t on = 1U;
       (void)enqueue_op(hud, PIXEL_HUD_CMD_MANUAL, &on, 1U);
     }
@@ -1777,18 +2157,12 @@ void pixel_hud_open_menu(pixel_hud_t *hud, uint32_t now_ms)
   if (hud == NULL || !hud->detected) {
     return;
   }
-  if (hud->stock_ui_mode) {
-    hud->stock_ui_mode = false;
-    uint8_t on = 1U;
-    (void)enqueue_op(hud, PIXEL_HUD_CMD_MANUAL, &on, 1U);
-    q_fill(hud, 0U, 0U, 128U, 128U, COL_BG, false);
-  }
   hud->screensaver_active = false;
   hud->menu_open          = true;
   hud->editing            = false;
   hud->focus_row          = 1U; /* Jump straight to TFT brightness slider for 1-click access */
   hud->last_input_ms      = now_ms;
-  start_page_transition(hud, PIXEL_PAGE_BRIGHTNESS, 1);
+  switch_page_instant(hud, PIXEL_PAGE_BRIGHTNESS);
 }
 
 void pixel_hud_close_menu(pixel_hud_t *hud)
@@ -1802,9 +2176,18 @@ void pixel_hud_close_menu(pixel_hud_t *hud)
   hud->menu_open = false;
   hud->editing   = false;
   hud->focus_row = 0U;
-  if (!hud->stock_ui_mode) {
-    start_page_transition(hud, PIXEL_PAGE_HOME, -1);
+  switch_page_instant(hud, PIXEL_PAGE_HOME);
+}
+
+static uint8_t find_nearest_eco_idx(uint8_t mins)
+{
+  uint8_t best = 0U;
+  for (uint8_t i = 0U; i < ECO_PRESET_COUNT; i++) {
+    if (mins >= k_eco_presets[i]) {
+      best = i;
+    }
   }
+  return best;
 }
 
 static bool adjust_focused_item(pixel_hud_t *hud, int8_t dir)
@@ -1819,7 +2202,7 @@ static bool adjust_focused_item(pixel_hud_t *hud, int8_t dir)
       int32_t v = (int32_t)c->tft_brightness + ((int32_t)dir * 10);
       if (v < 0) v = 0;
       if (v > 100) v = 100;
-      c->tft_brightness = (uint8_t)v;
+      c->tft_brightness  = (uint8_t)v;
       hud->tft_brt_dirty = true;
       return true;
     }
@@ -1919,7 +2302,8 @@ static bool adjust_focused_item(pixel_hud_t *hud, int8_t dir)
       return true;
     }
     if (hud->focus_row == 3U) {
-      int32_t m = ((int32_t)c->hall_socd_mode + dir + 3) % 3;
+      /* Support all 4 SOCD modes consistently with VIA & KC_SOCD_CYCLE */
+      int32_t m = ((int32_t)c->hall_socd_mode + dir + 4) % 4;
       c->hall_socd_mode = (uint8_t)m;
       return true;
     }
@@ -1936,6 +2320,26 @@ static bool adjust_focused_item(pixel_hud_t *hud, int8_t dir)
       hud->macro_sel_slot = (uint8_t)slot;
       return false;
     }
+  } else if (hud->page == PIXEL_PAGE_POWER) {
+    if (hud->focus_row == 1U) {
+      int32_t idx = ((int32_t)find_nearest_eco_idx(c->sleep_timeout_min) + dir +
+                     (int32_t)ECO_PRESET_COUNT) % (int32_t)ECO_PRESET_COUNT;
+      c->sleep_timeout_min = k_eco_presets[idx];
+      return true;
+    }
+    if (hud->focus_row == 2U) {
+      c->tft_screensaver ^= 1U;
+      return true;
+    }
+    if (hud->focus_row == 3U) {
+      int32_t r = ((int32_t)(c->rf_poll_rate_idx & 3U) + dir + 4) % 4;
+      c->rf_poll_rate_idx = (uint8_t)r;
+      return true;
+    }
+    if (hud->focus_row == 4U) {
+      c->tft_clock_24h ^= 1U;
+      return true;
+    }
   } else if (hud->page == PIXEL_PAGE_SYSTEM) {
     if (hud->focus_row == 1U) {
       int32_t p = (int32_t)u8_to_pct10(c->rgb_speed, 1U) + ((int32_t)dir * 10);
@@ -1951,29 +2355,16 @@ static bool adjust_focused_item(pixel_hud_t *hud, int8_t dir)
       return true;
     }
     if (hud->focus_row == 3U) {
-      c->tft_screensaver ^= 1U;
+      c->win_lock ^= 1U;
       return true;
     }
     if (hud->focus_row == 4U) {
-      hud->stock_ui_mode = !hud->stock_ui_mode;
-      if (hud->stock_ui_mode) {
-        /* Clear entire 128x128 screen to stock charcoal (0x18E4) before handing back to stock UI */
-        q_fill(hud, 0U, 0U, 128U, 128U, 0x18E4U, true);
-        uint8_t off = 0U;
-        (void)enqueue_op(hud, PIXEL_HUD_CMD_MANUAL, &off, 1U);
-        hud->menu_open          = false;
-        hud->editing            = false;
-        hud->screensaver_active = false;
-        hud->wipe_step          = 0U;
-        hud->full_redraw_needed = false;
-        hud->body_redraw_needed = false;
-      } else {
-        uint8_t on = 1U;
-        (void)enqueue_op(hud, PIXEL_HUD_CMD_MANUAL, &on, 1U);
-        q_fill(hud, 0U, 0U, 128U, 128U, COL_BG, false);
-        hud->full_redraw_needed = true;
-      }
-      return false;
+      /* Cycle persistent TFT skin cleanly: PIXEL <-> STOCK+ <-> TERM */
+      int32_t cur = (int32_t)normalize_theme_id(c->tft_theme);
+      int32_t nxt = (cur + dir + (int32_t)TFT_THEME_COUNT) % (int32_t)TFT_THEME_COUNT;
+      c->tft_theme = (uint8_t)nxt;
+      invalidate_render_cache(hud);
+      return true;
     }
   }
   return false;
@@ -2006,9 +2397,7 @@ bool pixel_hud_input(pixel_hud_t *hud, hud_menu_act_t act, uint32_t now_ms)
       return false;
     }
     bool chg = adjust_focused_item(hud, dir);
-    if (!hud->stock_ui_mode) {
-      hud->body_redraw_needed = true;
-    }
+    hud->body_redraw_needed = true;
     return chg;
   }
 
@@ -2021,7 +2410,6 @@ bool pixel_hud_input(pixel_hud_t *hud, hud_menu_act_t act, uint32_t now_ms)
       hud->focus_row          = 1U;
       hud->body_redraw_needed = true;
     } else if (hud->page == PIXEL_PAGE_SWITCH && hud->focus_row == 4U) {
-      /* 1-click launch interactive 82-key Hall calibration */
       hud->cal_start_req      = true;
       hud->menu_open          = false;
       hud->editing            = false;
@@ -2035,16 +2423,13 @@ bool pixel_hud_input(pixel_hud_t *hud, hud_menu_act_t act, uint32_t now_ms)
     return false;
   }
 
-  /* Not editing: PREV / NEXT navigates tab bar or rows */
+  /* Not editing: PREV / NEXT navigates tab bar or rows (zero animation!) */
   if (hud->focus_row == 0U || hud->page == PIXEL_PAGE_HOME) {
     int32_t next_p = ((int32_t)hud->page + (int32_t)PIXEL_PAGE_COUNT + (int32_t)dir) % (int32_t)PIXEL_PAGE_COUNT;
     hud->focus_row = 0U;
-    start_page_transition(hud, (uint8_t)next_p, dir);
+    switch_page_instant(hud, (uint8_t)next_p);
   } else {
-    int32_t max_r  = (hud->page == PIXEL_PAGE_BRIGHTNESS ||
-                      hud->page == PIXEL_PAGE_LIGHTING ||
-                      hud->page == PIXEL_PAGE_SWITCH ||
-                      hud->page == PIXEL_PAGE_SYSTEM) ? 4 : 3;
+    int32_t max_r  = (hud->page == PIXEL_PAGE_MACRO) ? 3 : 4;
     int32_t next_r = (int32_t)hud->focus_row + dir;
     if (next_r < 0) next_r = max_r;
     if (next_r > max_r) next_r = 0;
@@ -2092,30 +2477,44 @@ void pixel_hud_tick(pixel_hud_t *hud, uint32_t now_ms)
     return;
   }
 
+  /* Detect external theme switches (e.g. VIA ch=7 val=10) & force spotless full repaint */
+  uint8_t desired_theme = normalize_theme_id(hud->cfg->tft_theme);
+  if (desired_theme != hud->applied_theme) {
+    hud->applied_theme = desired_theme;
+    invalidate_render_cache(hud);
+    if (hud->screensaver_active) {
+      hud->screensaver_active = false;
+    }
+    if (hud->prev_cal_active) {
+      hud->prev_cal_active = false;
+    }
+    if (hud->prev_macro_rec) {
+      hud->prev_macro_rec = false;
+    }
+    if (hud->prev_macro_rev) {
+      hud->prev_macro_rev = false;
+    }
+  }
+
   /* Drain queued draw ops first */
   pump_tx_queue(hud, now_ms);
-  if (hud->stock_ui_mode) {
-    return;
-  }
 
   /* Menu auto-timeout */
   if (hud->menu_open && (uint32_t)(now_ms - hud->last_input_ms) >= MENU_TIMEOUT_MS) {
     pixel_hud_close_menu(hud);
   }
 
-  /* Post-boot brightness + display flush re-assert: U24 stock boot sequence turns backlight
-   * up to 100% and finishes ST7735S init ~0.5..1.5s after power-on, so re-assert saved PWM
-   * and trigger a clean FB_DIRTY flush (0x24 [0xFF]) at +300ms, +900ms, and +1800ms. */
+  /* Post-boot brightness + display flush re-assert (+300ms, +900ms, +1800ms) */
   if (hud->brt_reapply_left > 0U) {
-    if (hud->brt_reapply_ms == 0U) {
-      hud->brt_reapply_ms = now_ms + 300U;
+    if (!hud->brt_reapply_armed) {
+      hud->brt_reapply_armed = true;
+      hud->brt_reapply_ms    = now_ms + 300U;
     } else if ((int32_t)(now_ms - hud->brt_reapply_ms) >= 0) {
       hud->applied_tft_brt = 0xFFU;
       hud->tft_brt_dirty   = true;
       if (hud->brt_reapply_left == 3U && !hud->menu_open && !hud->screensaver_active &&
           !hud->live.macro_recording && !hud->live.macro_reviewing &&
           !hud->live.cal_active && !hud->live.any_actuated) {
-        /* One extra full repaint after U24 boot settles guarantees zero missing elements */
         hud->full_redraw_needed = true;
       } else if (hud->q_count < (PIXEL_HUD_QUEUE_CAP - 3U)) {
         uint8_t fl = 0xFFU;
@@ -2127,12 +2526,11 @@ void pixel_hud_tick(pixel_hud_t *hud, uint32_t now_ms)
       } else if (hud->brt_reapply_left == 1U) {
         hud->brt_reapply_ms = now_ms + 900U;
       } else {
-        hud->brt_reapply_ms = 0U;
+        hud->brt_reapply_armed = false;
       }
     }
   }
 
-  /* Apply TFT brightness whenever changed (after initial full page is queued so it follows first flush) */
   if (!hud->full_redraw_needed && hud->tft_brt_dirty && hud->q_count < (PIXEL_HUD_QUEUE_CAP - 2U)) {
     hud->tft_brt_dirty = false;
     if (hud->cfg->tft_brightness != hud->applied_tft_brt) {
@@ -2142,7 +2540,6 @@ void pixel_hud_tick(pixel_hud_t *hud, uint32_t now_ms)
     }
   }
 
-  /* Only enqueue new visual frames when queue is nearly empty (prevents lag buildup) */
   if (hud->q_count > 2U) {
     return;
   }
@@ -2167,13 +2564,12 @@ void pixel_hud_tick(pixel_hud_t *hud, uint32_t now_ms)
     }
     return;
   } else if (hud->prev_cal_active) {
-    hud->prev_cal_active    = false;
-    hud->wipe_step          = 0U;
-    hud->page               = PIXEL_PAGE_HOME;
-    hud->full_redraw_needed = true;
+    hud->prev_cal_active = false;
+    hud->page            = PIXEL_PAGE_HOME;
+    invalidate_render_cache(hud);
   }
 
-  /* Fullscreen pixel-art macro text editor (review & edit before final Fn confirm) */
+  /* Fullscreen macro text editor takeover */
   if (hud->live.macro_reviewing) {
     hud->screensaver_active = false;
     hud->prev_macro_rec     = false;
@@ -2195,13 +2591,12 @@ void pixel_hud_tick(pixel_hud_t *hud, uint32_t now_ms)
     pump_tx_queue(hud, now_ms);
     return;
   } else if (hud->prev_macro_rev) {
-    hud->prev_macro_rev     = false;
-    hud->edit_dirty_mask    = 0U;
-    hud->wipe_step          = 0U;
-    hud->full_redraw_needed = true;
+    hud->prev_macro_rev  = false;
+    hud->edit_dirty_mask = 0U;
+    invalidate_render_cache(hud);
   }
 
-  /* Fullscreen pixel-art macro recording takeover */
+  /* Fullscreen macro recording takeover */
   if (hud->live.macro_recording) {
     hud->screensaver_active = false;
     if (!hud->prev_macro_rec) {
@@ -2223,13 +2618,11 @@ void pixel_hud_tick(pixel_hud_t *hud, uint32_t now_ms)
     }
     return;
   } else if (hud->prev_macro_rec) {
-    hud->prev_macro_rec     = false;
-    hud->wipe_step          = 0U;
-    hud->full_redraw_needed = true;
+    hud->prev_macro_rec = false;
+    invalidate_render_cache(hud);
   }
 
-  /* Pixel-art idle screensaver (Clock & System Info); instant wake on typing/input/VIA disable.
-   * Do not gate on raw max_travel_um because warm Hall sensors can sit at 300..450um below actuation. */
+  /* Idle clock & system info screensaver */
   bool saver_want = (hud->cfg->tft_screensaver != 0U) && !hud->menu_open &&
                     (hud->page == PIXEL_PAGE_HOME) &&
                     (hud->live.idle_ms >= SCREENSAVER_IDLE_MS) &&
@@ -2257,22 +2650,7 @@ void pixel_hud_tick(pixel_hud_t *hud, uint32_t now_ms)
     return;
   } else if (hud->screensaver_active) {
     hud->screensaver_active = false;
-    hud->wipe_step          = 0U;
-    hud->full_redraw_needed = true;
-  }
-
-  /* Smooth 3-step horizontal pixel wipe on page switch */
-  if (hud->wipe_step > 0U) {
-    if ((uint32_t)(now_ms - hud->last_anim_ms) >= 16U) {
-      hud->last_anim_ms = now_ms;
-      render_wipe_step(hud);
-      hud->wipe_step++;
-      if (hud->wipe_step > 3U) {
-        hud->wipe_step = 0U;
-      }
-    }
-    pump_tx_queue(hud, now_ms);
-    return;
+    invalidate_render_cache(hud);
   }
 
   if (hud->full_redraw_needed || hud->body_redraw_needed) {
@@ -2283,7 +2661,7 @@ void pixel_hud_tick(pixel_hud_t *hud, uint32_t now_ms)
     return;
   }
 
-  /* Live HOME page incremental updates (~35 FPS smooth switch animation) */
+  /* Live HOME page incremental updates (~35 FPS smooth switch animation, zero traffic when idle!) */
   if (hud->page == PIXEL_PAGE_HOME && (uint32_t)(now_ms - hud->last_anim_ms) >= ANIM_PERIOD_MS) {
     hud->last_anim_ms = now_ms;
 
@@ -2291,7 +2669,6 @@ void pixel_hud_tick(pixel_hud_t *hud, uint32_t now_ms)
     uint8_t  target_px   = (uint8_t)(((uint32_t)disp_travel * PLUNGER_MAX_PX) / 4000U);
     if (target_px > PLUNGER_MAX_PX) target_px = PLUNGER_MAX_PX;
 
-    /* Spring-eased motion: fast press down, smooth snap-back up */
     uint8_t next_px = hud->anim_plunger_px;
     if (target_px > next_px) {
       uint8_t step = (uint8_t)((target_px - next_px + 1U) / 2U);
@@ -2304,17 +2681,42 @@ void pixel_hud_tick(pixel_hud_t *hud, uint32_t now_ms)
       if (next_px < target_px) next_px = target_px;
     }
 
-    bool hdr_chg   = (compute_header_hash(hud) != hud->prev_header_hash);
-    bool sw_chg    = (next_px != hud->anim_plunger_px) || (hud->live.any_actuated != hud->prev_actuated);
-    uint16_t td    = (disp_travel > 0U)
-                       ? (uint16_t)((disp_travel + 50U) / 100U)
-                       : (uint16_t)((hud->cfg->hall_actuation_um + 50U) / 100U);
-    bool stats_chg = (hud->live.wpm != hud->prev_wpm) || (td != hud->prev_travel_disp) ||
-                     (compute_badges_hash(hud) != hud->prev_badges_hash);
-
+    bool hdr_chg = (compute_header_hash(hud) != hud->prev_header_hash);
     if (hdr_chg) {
       draw_home_header(hud);
     }
+
+    if (active_theme(hud)->id == TFT_THEME_STOCK_PLUS) {
+      uint8_t hh = 0U, mm = 0U, ss = 0U;
+      get_display_hms(hud, &hh, &mm, &ss);
+      uint16_t td = (disp_travel > 0U)
+                      ? (uint16_t)((disp_travel + 50U) / 100U)
+                      : (uint16_t)((hud->cfg->hall_actuation_um + 50U) / 100U);
+      bool body_chg = (hh != hud->prev_home_hour) || (mm != hud->prev_home_min) ||
+                      ((ss & 1U) != hud->prev_home_sec_odd) ||
+                      (hud->live.rtc_valid != hud->prev_home_rtc_valid) ||
+                      (hud->live.wpm != hud->prev_wpm) ||
+                      (td != hud->prev_travel_disp) ||
+                      (next_px != hud->anim_plunger_px) ||
+                      (hud->live.any_actuated != hud->prev_actuated) ||
+                      (compute_badges_hash(hud) != hud->prev_badges_hash);
+      if (body_chg) {
+        draw_stock_home_dynamic(hud, next_px, hud->live.any_actuated, false, true);
+      } else if (hdr_chg) {
+        uint8_t f = 0xFFU;
+        (void)enqueue_op(hud, PIXEL_HUD_CMD_BRIGHTNESS, &f, 1U);
+      }
+      pump_tx_queue(hud, now_ms);
+      return;
+    }
+
+    bool sw_chg = (next_px != hud->anim_plunger_px) || (hud->live.any_actuated != hud->prev_actuated);
+    uint16_t td = (disp_travel > 0U)
+                    ? (uint16_t)((disp_travel + 50U) / 100U)
+                    : (uint16_t)((hud->cfg->hall_actuation_um + 50U) / 100U);
+    bool stats_chg = (hud->live.wpm != hud->prev_wpm) || (td != hud->prev_travel_disp) ||
+                     (compute_badges_hash(hud) != hud->prev_badges_hash);
+
     if (sw_chg) {
       draw_switch_animation(hud, next_px, hud->live.any_actuated, !stats_chg);
     }

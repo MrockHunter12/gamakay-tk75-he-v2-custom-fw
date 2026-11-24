@@ -223,6 +223,7 @@ static void handle_tft_custom(via_context_t *via, bool is_set, uint8_t const *re
       case 7U: c->tft_he_bar_enabled = (req[3] != 0U) ? 1U : 0U; break;
       case 8U: c->encoder_mode       = (req[3] <= 3U) ? req[3] : 0U; break;
       case 9U: c->tft_screensaver    = (req[3] != 0U) ? 1U : 0U; break;
+      case 10U: c->tft_theme         = (req[3] < (uint8_t)TFT_THEME_COUNT) ? req[3] : 0U; break;
       default: rep[0] = ID_UNHANDLED; return;
     }
     emit_simple_event(via, VIA_EVT_TFT_CHANGED);
@@ -239,6 +240,7 @@ static void handle_tft_custom(via_context_t *via, bool is_set, uint8_t const *re
     case 7U: rep[3] = c->tft_he_bar_enabled; break;
     case 8U: rep[3] = c->encoder_mode; break;
     case 9U: rep[3] = c->tft_screensaver; break;
+    case 10U: rep[3] = (c->tft_theme < (uint8_t)TFT_THEME_COUNT) ? c->tft_theme : 0U; break;
     default: rep[0] = ID_UNHANDLED; break;
   }
 }

@@ -83,6 +83,7 @@ void tk75_cfg_set_defaults(tk75_persist_cfg_t *cfg)
   cfg->tft_screensaver    = 1U; /* Pixel-art idle screensaver enabled by default */
   cfg->caps_side_enabled  = 1U; /* Trigger sidelight ON while Caps Lock is active */
   cfg->caps_side_effect   = 1U; /* Breathing */
+  cfg->tft_theme          = (uint8_t)TFT_THEME_PIXEL;
 
   cfg->crc32 = tk75_cfg_crc32(cfg);
 }

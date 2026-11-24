@@ -103,6 +103,7 @@ VIA_CUSTOM_FIELDS: tuple[tuple[int, int, int, str], ...] = (
     (7, 7, 1, "tft_he_bar_enabled"),
     (7, 8, 1, "encoder_mode"),
     (7, 9, 1, "tft_screensaver"),
+    (7, 10, 1, "tft_theme"),
     # Channel 9: Wireless / System
     (9, 1, 1, "rf_bt_slot"),
     (9, 2, 1, "rf_poll_rate_idx"),

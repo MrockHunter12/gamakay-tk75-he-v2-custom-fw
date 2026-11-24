@@ -20,7 +20,7 @@ extern "C" {
 #define PIXEL_HUD_CMD_VERSION    0x25U
 #define PIXEL_HUD_CMD_BATCH_RECT 0x26U
 
-#define PIXEL_HUD_QUEUE_CAP      40U
+#define PIXEL_HUD_QUEUE_CAP      48U
 
 typedef enum {
   PIXEL_PAGE_HOME = 0,
@@ -28,6 +28,7 @@ typedef enum {
   PIXEL_PAGE_LIGHTING,
   PIXEL_PAGE_SWITCH,
   PIXEL_PAGE_MACRO,
+  PIXEL_PAGE_POWER,
   PIXEL_PAGE_SYSTEM,
   PIXEL_PAGE_COUNT,
 } pixel_hud_page_t;
@@ -83,10 +84,10 @@ typedef struct {
   bool                detected;       /* True once U24 replies 0xA5 (patch v1.1+) */
   uint8_t             patch_major;
   uint8_t             patch_minor;
-  bool                stock_ui_mode;  /* User switched back to stock clock/menu */
+  uint8_t             applied_theme;  /* Currently rendered tft_theme_t */
   bool                menu_open;
   uint8_t             page;           /* pixel_hud_page_t */
-  uint8_t             focus_row;      /* 0=page tab bar, 1..3=items, 4=exit */
+  uint8_t             focus_row;      /* 0=page tab bar, 1..4=items */
   bool                editing;        /* True while knob adjusts focused item value */
 
   uint32_t            last_probe_ms;
@@ -95,13 +96,9 @@ typedef struct {
   uint32_t            last_input_ms;
   bool                awaiting_ack;
 
-  /* Wipe animation state on page switch (0=idle, 1..3=sweep frames) */
-  uint8_t             wipe_step;
-  int8_t              wipe_dir;
-
   /* Live telemetry & smoothed switch animation state */
   pixel_hud_live_t    live;
-  uint8_t             anim_plunger_px; /* Current rendered plunger travel (0..18 px) */
+  uint8_t             anim_plunger_px;  /* Current rendered plunger travel (0..18 px) */
   bool                prev_actuated;
   uint16_t            prev_wpm;
   uint16_t            prev_travel_disp; /* Displayed 0.1 mm units */
@@ -109,8 +106,13 @@ typedef struct {
   bool                travel_active;    /* Hysteresis latch for live travel display */
   uint32_t            prev_header_hash;
   uint8_t             prev_badges_hash;
+  uint8_t             prev_home_hour;
+  uint8_t             prev_home_min;
+  uint8_t             prev_home_sec_odd;
+  bool                prev_home_rtc_valid;
   uint8_t             applied_tft_brt;
   uint8_t             brt_reapply_left;
+  bool                brt_reapply_armed;
   uint32_t            brt_reapply_ms;
   bool                full_redraw_needed;
   bool                body_redraw_needed;
@@ -147,7 +149,7 @@ typedef struct {
   uint8_t             q_count;
 } pixel_hud_t;
 
-/** Initialize pixel-art HUD engine bound to persistent config and UART7 sender. */
+/** Initialize multi-theme pixel HUD engine bound to persistent config and UART7 sender. */
 void pixel_hud_init(pixel_hud_t *hud, tk75_persist_cfg_t *cfg,
                     hud_send_frame_fn_t send_fn, void *send_ctx);
 
@@ -157,19 +159,22 @@ bool pixel_hud_is_active(pixel_hud_t const *hud);
 /** Returns true when interactive Pixel HUD menu is currently open. */
 bool pixel_hud_is_menu_open(pixel_hud_t const *hud);
 
+/** Return normalized active theme ID (0=Pixel, 1=Stock+, 2=Terminal). */
+uint8_t pixel_hud_get_theme(pixel_hud_t const *hud);
+
 /** Feed incoming UART7 'D' frame; handles patch detection (0xA5) and ACK pacing. */
 void pixel_hud_on_rx(pixel_hud_t *hud, uart7_rx_frame_t const *frame);
 
 /** Update live Hall travel, WPM, battery, mode, and LED status. */
 void pixel_hud_set_live(pixel_hud_t *hud, pixel_hud_live_t const *live);
 
-/** Notify that config (brightness/RGB/Hall/OS) changed externally (e.g. VIA). */
+/** Notify that config (theme/brightness/RGB/Hall/Power/OS) changed externally (e.g. VIA). */
 void pixel_hud_mark_config_dirty(pixel_hud_t *hud);
 
 /** Open interactive menu (jumps cleanly to Brightness page, row 1 ready). */
 void pixel_hud_open_menu(pixel_hud_t *hud, uint32_t now_ms);
 
-/** Close menu and return to Home Live Switch dashboard. */
+/** Close menu and return immediately to Home dashboard (no page animation). */
 void pixel_hud_close_menu(pixel_hud_t *hud);
 
 /** Handle knob action (PREV/NEXT/OK); returns true if persistent cfg changed. */

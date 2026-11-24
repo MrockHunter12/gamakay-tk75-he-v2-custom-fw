@@ -279,6 +279,12 @@ void sim_set_tft_cfg(uint8_t brt, uint8_t saver, uint8_t mac_mode)
   pixel_hud_mark_config_dirty(&g_sim.px_hud);
 }
 
+void sim_set_tft_theme(uint8_t theme)
+{
+  g_sim.cfg.tft_theme = (theme < (uint8_t)TFT_THEME_COUNT) ? theme : 0U;
+  pixel_hud_mark_config_dirty(&g_sim.px_hud);
+}
+
 void sim_set_hall_cfg(uint16_t act_um, uint8_t rt_en, uint8_t socd)
 {
   g_sim.cfg.hall_actuation_um = act_um;

@@ -219,7 +219,17 @@
             { "label": "24-Hour Clock", "type": "toggle", "content": ["id_tk75_tft_24h", 7, 5] },
             { "label": "Live WPM Counter", "type": "toggle", "content": ["id_tk75_tft_wpm", 7, 6] },
             { "label": "Live Hall Travel Telemetry", "type": "toggle", "content": ["id_tk75_tft_he", 7, 7] },
-            { "label": "Idle Pixel Screensaver (Clock & Sys)", "type": "toggle", "content": ["id_tk75_tft_saver", 7, 9] }
+            { "label": "Idle Pixel Screensaver (Clock & Sys)", "type": "toggle", "content": ["id_tk75_tft_saver", 7, 9] },
+            {
+              "label": "TFT Menu Theme / Skin",
+              "type": "dropdown",
+              "options": [
+                ["0: Pixel Cyber", 0],
+                ["1: Stock+ Classic (Full Features)", 1],
+                ["2: Phosphor Terminal", 2]
+              ],
+              "content": ["id_tk75_tft_theme", 7, 10]
+            }
           ]
         },
         {
@@ -268,7 +278,7 @@
               "content": ["id_tk75_rf_rate", 9, 2]
             },
             { "label": "macOS Mode (Swap Gui/Alt)", "type": "toggle", "content": ["id_tk75_mac_mode", 9, 3] },
-            { "label": "Battery Idle Sleep (min, 0=Off)", "type": "range", "options": [0, 30], "content": ["id_tk75_sleep_min", 9, 4] },
+            { "label": "Deep Energy Save (RGB+TFT Off, min, 0=Off)", "type": "range", "options": [0, 30], "content": ["id_tk75_sleep_min", 9, 4] },
             { "label": "Start BLE / 2.4GHz Pairing", "type": "toggle", "content": ["id_tk75_rf_pair", 9, 5] }
           ]
         }
