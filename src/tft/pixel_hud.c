@@ -1960,15 +1960,13 @@ static void draw_screensaver_anim(pixel_hud_t *hud, bool force_all)
   }
 }
 
-/* ---- Built-in Funny Expressive Cartoon Eyes Screensaver (Pitch Black Background) ---- */
+/* ---- Built-in Clean Moving / Side-Eye / Blinking Eyes Screensaver (Pitch Black Background) ---- */
 #define SAVER_COL_BLACK   0x0000U
 #define SAVER_COL_WHITE   0xFFFFU
-#define SAVER_COL_IRIS    0x04BFU /* Electric ocean blue-cyan pupil halo */
-#define SAVER_COL_HEART   0xF8B2U /* Vivid hot pink-crimson heart */
-#define SAVER_COL_BLUSH   0xF995U /* Rosy cartoon blush */
-#define SAVER_COL_TONGUE  0xFA6DU /* Silly derp tongue pink */
-#define SAVER_COL_GOLD    0xFFE0U /* Bright shock exclamation / corner flash */
-#define SAVER_COL_CYAN    0x3F5FU /* Electric cyan zZz / neon */
+#define SAVER_COL_HEART   0xF8B2U /* Neon pink accent (Cat/DVD) */
+#define SAVER_COL_BLUSH   0xF995U /* Cat inner ears & rosy cheeks */
+#define SAVER_COL_GOLD    0xFFE0U /* DVD corner flash */
+#define SAVER_COL_CYAN    0x3F5FU /* Neon cyan */
 #define SAVER_COL_MINT    0x37D3U /* Neon mint */
 #define SAVER_COL_AMBER   0xFDC6U /* Warm amber */
 #define SAVER_COL_PURPLE  0xB19FU /* Neon violet */
@@ -1981,167 +1979,80 @@ static void batch_add_eye_sclera(rect_batch_t *b, uint8_t cx, uint8_t cy, uint16
   batch_add(b, (uint8_t)(cx - 21U), (uint8_t)(cy - 15U), 42U, 30U, col);
 }
 
-static void batch_add_eye_pupil(rect_batch_t *b, uint8_t px, uint8_t py, bool tiny)
+static void batch_add_eye_pupil(rect_batch_t *b, uint8_t px, uint8_t py)
 {
-  if (tiny) {
-    batch_add(b, (uint8_t)(px - 3U), (uint8_t)(py - 3U), 6U, 6U, SAVER_COL_BLACK);
-    batch_add(b, (uint8_t)(px - 2U), (uint8_t)(py - 2U), 2U, 2U, SAVER_COL_WHITE);
-    return;
-  }
-  batch_add(b, (uint8_t)(px - 8U), (uint8_t)(py - 9U), 16U, 18U, SAVER_COL_IRIS);
-  batch_add(b, (uint8_t)(px - 6U), (uint8_t)(py - 7U), 12U, 14U, SAVER_COL_BLACK);
+  batch_add(b, (uint8_t)(px - 7U), (uint8_t)(py - 8U), 14U, 16U, SAVER_COL_BLACK);
   batch_add(b, (uint8_t)(px - 4U), (uint8_t)(py - 5U), 4U, 4U, SAVER_COL_WHITE);
   batch_add(b, (uint8_t)(px + 2U), (uint8_t)(py + 2U), 2U, 2U, SAVER_COL_WHITE);
 }
 
-static void batch_add_pixel_heart(rect_batch_t *b, uint8_t cx, uint8_t cy, bool big)
-{
-  uint8_t d = big ? 1U : 0U;
-  batch_add(b, (uint8_t)(cx - 11U - d), (uint8_t)(cy - 9U - d), (uint8_t)(9U + d), (uint8_t)(8U + d), SAVER_COL_HEART);
-  batch_add(b, (uint8_t)(cx + 2U), (uint8_t)(cy - 9U - d), (uint8_t)(9U + d), (uint8_t)(8U + d), SAVER_COL_HEART);
-  batch_add(b, (uint8_t)(cx - 13U - d), (uint8_t)(cy - 5U), (uint8_t)(26U + (d * 2U)), (uint8_t)(8U + d), SAVER_COL_HEART);
-  batch_add(b, (uint8_t)(cx - 9U - d), (uint8_t)(cy + 3U), (uint8_t)(18U + (d * 2U)), 6U, SAVER_COL_HEART);
-  batch_add(b, (uint8_t)(cx - 4U), (uint8_t)(cy + 9U), 8U, (uint8_t)(4U + d), SAVER_COL_HEART);
-}
-
 static void draw_saver_eyes_frame(pixel_hud_t *hud)
 {
-  static int8_t const k_orbit_dx[8] = { 0,  7, 10,  7,  0, -7, -10, -7 };
-  static int8_t const k_orbit_dy[8] = { -11, -8,  0,  8, 11,  8,   0, -8 };
-
-  uint16_t step = hud->saver_step % 120U;
+  uint16_t step = hud->saver_step % 84U;
   uint8_t const lcx = 36U;
   uint8_t const rcx = 92U;
-  uint8_t const cy  = 62U;
+  uint8_t const cy  = 64U;
 
   int8_t  ldx = 0, ldy = 0, rdx = 0, rdy = 0;
-  uint8_t top_lid    = 0U;
-  uint8_t bot_lid    = 0U;
-  bool    blink      = false;
-  bool    wink_right = false;
-  bool    shock      = false;
-  bool    hearts     = false;
-  bool    derp       = false;
-  bool    sleepy     = false;
+  uint8_t top_lid = 0U;
+  uint8_t bot_lid = 0U;
+  bool    blink   = false;
 
   if (step < 6U) {
-    /* Curious look center */
+    /* Calm center gaze */
   } else if (step < 8U) {
     blink = true;
   } else if (step < 16U) {
     ldx = 10; ldy = -2; rdx = 10; rdy = -2; /* Look right */
   } else if (step < 24U) {
     ldx = -10; ldy = -2; rdx = -10; rdy = -2; /* Look left */
-  } else if (step < 38U) {
-    /* Suspicious squint side-eye scan */
+  } else if (step < 26U) {
+    blink = true;
+  } else if (step < 44U) {
+    /* Suspicious side-eye squint sweeping left -> right */
     top_lid = 16U;
     bot_lid = 12U;
-    int8_t dir = (step < 31U) ? -10 : 10;
+    int8_t dir = (step < 35U) ? -10 : 10;
     ldx = dir; ldy = 2; rdx = dir; rdy = 2;
   } else if (step < 52U) {
-    /* Cross-eyed googly derp + silly pink tongue */
-    derp = true;
-    int8_t wob = ((step & 2U) != 0U) ? 1 : -1;
-    ldx = 10;  ldy = (int8_t)(6 + wob);
-    rdx = -10; rdy = (int8_t)(-6 - wob);
-  } else if (step < 62U) {
-    /* Wide-eyed shock O_O with jittering pinprick pupils */
-    shock = true;
-    int8_t jx = ((step & 1U) != 0U) ? 2 : -2;
-    int8_t jy = ((step & 2U) != 0U) ? -2 : 2;
-    ldx = jx; ldy = jy; rdx = -jx; rdy = -jy;
-  } else if (step < 74U) {
-    /* Cheeky happy wink + rosy cheeks */
-    wink_right = true;
-    ldx = 2; ldy = -2;
-    bot_lid = 8U;
-  } else if (step < 88U) {
-    /* Pulsing heart eyes */
-    hearts = true;
-  } else if (step < 104U) {
-    /* Dizzy counter-orbiting googly pupils */
-    uint8_t idx = (uint8_t)((step - 88U) & 7U);
-    ldx = k_orbit_dx[idx];
-    ldy = k_orbit_dy[idx];
-    uint8_t ridx = (uint8_t)((8U - idx) & 7U);
-    rdx = k_orbit_dx[ridx];
-    rdy = k_orbit_dy[ridx];
-  } else if (step < 118U) {
-    /* Sleepy drooping lids + floating zZz */
-    sleepy  = true;
-    top_lid = (step < 108U) ? 22U : ((step < 114U) ? 34U : 40U);
-    ldx = 0; ldy = 8; rdx = 0; rdy = 8;
-  } else {
-    /* Snap awake blink */
-    blink = (step == 118U);
+    ldx = 0; ldy = -10; rdx = 0; rdy = -10; /* Look up */
+  } else if (step < 60U) {
+    ldx = 9; ldy = 7; rdx = 9; rdy = 7; /* Look down-right */
+  } else if (step < 68U) {
+    ldx = -9; ldy = -7; rdx = -9; rdy = -7; /* Look up-left */
+  } else if (step < 76U) {
+    ldx = 10; ldy = 2; rdx = -10; rdy = 2; /* Quick playful cross-eye glance */
+  } else if (step == 76U || step == 77U || step == 80U || step == 81U) {
+    blink = true; /* Double blink reset */
   }
 
-  /* Batch 1: Clear active animation canvas & draw rounded scleras */
+  /* Batch 1: Clear eye region & draw clean rounded white scleras */
   rect_batch_t b;
   batch_init(&b);
-  batch_add(&b, 8U, 10U, 114U, 106U, SAVER_COL_BLACK);
+  batch_add(&b, 10U, 34U, 108U, 60U, SAVER_COL_BLACK);
   if (blink) {
-    batch_add(&b, 16U, 60U, 40U, 4U, SAVER_COL_WHITE);
-    batch_add(&b, 72U, 60U, 40U, 4U, SAVER_COL_WHITE);
+    batch_add(&b, 16U, 62U, 40U, 4U, SAVER_COL_WHITE);
+    batch_add(&b, 72U, 62U, 40U, 4U, SAVER_COL_WHITE);
     batch_submit(hud, &b, true);
     return;
   }
   batch_add_eye_sclera(&b, lcx, cy, SAVER_COL_WHITE);
-  if (!wink_right) {
-    batch_add_eye_sclera(&b, rcx, cy, SAVER_COL_WHITE);
-  } else {
-    /* Cheerful curved wink arch on right eye */
-    batch_add(&b, 73U, 58U, 12U, 4U, SAVER_COL_WHITE);
-    batch_add(&b, 83U, 54U, 18U, 4U, SAVER_COL_WHITE);
-    batch_add(&b, 99U, 58U, 12U, 4U, SAVER_COL_WHITE);
-    batch_add(&b, 16U, 92U, 14U, 5U, SAVER_COL_BLUSH);
-    batch_add(&b, 98U, 92U, 14U, 5U, SAVER_COL_BLUSH);
-  }
+  batch_add_eye_sclera(&b, rcx, cy, SAVER_COL_WHITE);
   batch_submit(hud, &b, false);
 
-  /* Batch 2: Pupils or Heart Eyes */
+  /* Batch 2: Clean glossy jet-black pupils + optional narrow side-eye lids */
   batch_init(&b);
-  if (hearts) {
-    bool pulse = ((step & 2U) == 0U);
-    batch_add_pixel_heart(&b, lcx, cy, pulse);
-    batch_add_pixel_heart(&b, rcx, cy, pulse);
-    batch_add(&b, 16U, 92U, 14U, 5U, SAVER_COL_BLUSH);
-    batch_add(&b, 98U, 92U, 14U, 5U, SAVER_COL_BLUSH);
-    batch_submit(hud, &b, true);
-    return;
-  }
-
-  batch_add_eye_pupil(&b, (uint8_t)(lcx + ldx), (uint8_t)(cy + ldy), shock);
-  if (!wink_right) {
-    batch_add_eye_pupil(&b, (uint8_t)(rcx + rdx), (uint8_t)(cy + rdy), shock);
-  }
+  batch_add_eye_pupil(&b, (uint8_t)(lcx + ldx), (uint8_t)(cy + ldy));
+  batch_add_eye_pupil(&b, (uint8_t)(rcx + rdx), (uint8_t)(cy + rdy));
   if (top_lid > 0U) {
-    batch_add(&b, 14U, 34U, 44U, top_lid, SAVER_COL_BLACK);
-    batch_add(&b, 70U, 34U, 44U, top_lid, SAVER_COL_BLACK);
+    batch_add(&b, 14U, 36U, 44U, top_lid, SAVER_COL_BLACK);
+    batch_add(&b, 70U, 36U, 44U, top_lid, SAVER_COL_BLACK);
   }
   if (bot_lid > 0U) {
-    batch_add(&b, 14U, (uint8_t)(90U - bot_lid), 44U, bot_lid, SAVER_COL_BLACK);
-    if (!wink_right) {
-      batch_add(&b, 70U, (uint8_t)(90U - bot_lid), 44U, bot_lid, SAVER_COL_BLACK);
-    }
+    batch_add(&b, 14U, (uint8_t)(92U - bot_lid), 44U, bot_lid, SAVER_COL_BLACK);
+    batch_add(&b, 70U, (uint8_t)(92U - bot_lid), 44U, bot_lid, SAVER_COL_BLACK);
   }
-  bool has_extra = derp || shock || sleepy;
-  batch_submit(hud, &b, !has_extra);
-
-  /* Optional Batch 3 / Text: silly tongue, shock "!", or sleepy floating "zZz" */
-  if (derp) {
-    batch_init(&b);
-    batch_add(&b, 56U, 98U, 16U, 12U, SAVER_COL_TONGUE);
-    batch_add(&b, 58U, 108U, 12U, 3U, SAVER_COL_TONGUE);
-    batch_add(&b, 63U, 99U, 2U, 9U, SAVER_COL_BLACK);
-    batch_submit(hud, &b, true);
-  } else if (shock) {
-    q_text(hud, 58U, 11U, "!!", SAVER_COL_GOLD, SAVER_COL_BLACK, 1U, false, true);
-  } else if (sleepy) {
-    uint8_t zy = (uint8_t)(24U - ((step - 104U) & 7U) * 2U);
-    q_text(hud, 94U, zy, ((step & 2U) == 0U) ? "zZz" : "ZzZ",
-           SAVER_COL_CYAN, SAVER_COL_BLACK, 1U, false, true);
-  }
+  batch_submit(hud, &b, true);
 }
 
 /* ---- Built-in Bongo Cat Screensaver (Pitch Black Background) ---- */

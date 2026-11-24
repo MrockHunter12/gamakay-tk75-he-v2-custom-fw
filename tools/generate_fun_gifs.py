@@ -35,68 +35,27 @@ def _save_gif(frames: list[Image.Image], path: pathlib.Path, duration_ms: int) -
     print(f"Generated {path.relative_to(ROOT)} ({len(frames)} frames, {duration_ms}ms, {path.stat().st_size} B)")
 
 
-def _draw_heart(draw: ImageDraw.ImageDraw, cx: int, cy: int, scale: float, fill: tuple[int, int, int]) -> None:
-    r = int(round(9 * scale))
-    draw.ellipse((cx - r - int(5 * scale), cy - r - int(3 * scale), cx + int(3 * scale), cy + int(5 * scale)), fill=fill)
-    draw.ellipse((cx - int(3 * scale), cy - r - int(3 * scale), cx + r + int(5 * scale), cy + int(5 * scale)), fill=fill)
-    draw.polygon(
-        [
-            (cx - int(14 * scale), cy - int(1 * scale)),
-            (cx + int(14 * scale), cy - int(1 * scale)),
-            (cx, cy + int(16 * scale)),
-        ],
-        fill=fill,
-    )
-    # Gloss highlight
-    draw.ellipse((cx - int(10 * scale), cy - int(9 * scale), cx - int(4 * scale), cy - int(3 * scale)), fill=(255, 210, 230))
-
-
-def _draw_cartoon_eye(
+def _draw_simple_eye(
     draw: ImageDraw.ImageDraw,
     cx: int,
     cy: int,
     px_off: float,
     py_off: float,
     rx: int = 23,
-    ry: int = 30,
-    iris_col: tuple[int, int, int] = (36, 200, 255),
-    tiny_pupil: bool = False,
+    ry: int = 31,
     top_lid: int = 0,
     bot_lid: int = 0,
     brow_tilt: int = 0,
-    heart_scale: float = 0.0,
-    spiral_ang: float | None = None,
 ) -> None:
-    # Smooth white sclera with subtle soft top shadow
-    draw.ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill=(250, 252, 255))
-    draw.arc((cx - rx, cy - ry, cx + rx, cy + ry), start=200, end=340, fill=(215, 226, 240), width=2)
+    """Clean minimal white cartoon eye with glossy black pupil & white catchlight on pitch-black bg."""
+    draw.ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill=(252, 253, 255))
 
-    if heart_scale > 0.0:
-        _draw_heart(draw, cx, cy + 1, heart_scale, (255, 42, 118))
-    elif spiral_ang is not None:
-        # Hypnotic dizzy spiral
-        pts = []
-        for t in range(42):
-            ang = spiral_ang + t * 0.42
-            rad = t * 0.44
-            pts.append((cx + math.cos(ang) * rad, cy + math.sin(ang) * rad))
-        for i in range(len(pts) - 1):
-            col = (20, 20, 30) if (i % 2 == 0) else (80, 120, 255)
-            draw.line((pts[i], pts[i + 1]), fill=col, width=3)
-    else:
-        px = int(round(cx + px_off))
-        py = int(round(cy + py_off))
-        if tiny_pupil:
-            draw.ellipse((px - 4, py - 4, px + 4, py + 4), fill=(5, 5, 10))
-            draw.ellipse((px - 2, py - 2, px, py), fill=(255, 255, 255))
-        else:
-            # Vibrant glowing iris + glossy black pupil + dual catchlights
-            draw.ellipse((px - 11, py - 13, px + 11, py + 13), fill=iris_col)
-            draw.ellipse((px - 8, py - 10, px + 8, py + 10), fill=(8, 10, 16))
-            draw.ellipse((px - 6, py - 8, px - 1, py - 3), fill=(255, 255, 255))
-            draw.ellipse((px + 2, py + 3, px + 5, py + 6), fill=(230, 248, 255))
+    px = int(round(cx + px_off))
+    py = int(round(cy + py_off))
+    draw.ellipse((px - 10, py - 12, px + 10, py + 12), fill=(0, 0, 0))
+    draw.ellipse((px - 6, py - 8, px - 1, py - 3), fill=(255, 255, 255))
+    draw.ellipse((px + 2, py + 3, px + 5, py + 6), fill=(235, 240, 248))
 
-    # Black eyelids (drawn cleanly over sclera so eyes sit seamlessly on pure black!)
     if top_lid > 0:
         if brow_tilt == 0:
             draw.rectangle((cx - rx - 2, cy - ry - 2, cx + rx + 2, cy - ry + top_lid), fill=(0, 0, 0))
@@ -112,105 +71,67 @@ def _draw_cartoon_eye(
 
 
 def gen_funny_eyes() -> None:
-    """30-frame smooth expressive cartoon eyes comedy loop on pitch-black background."""
+    """30-frame clean minimal moving/side-eye/blinking cartoon eyes on pitch-black background."""
     frames: list[Image.Image] = []
-    lcx, rcx, cy = 36, 92, 62
+    lcx, rcx, cy = 36, 92, 64
 
-    # 30 unique frames @ 150 ms (4.5s loop, zero duplicate frames merged by GIF encoder):
-    #  0-2: look center -> sweep right -> hold right glance
-    #  3-4: sweep left -> glance up-left
-    #  5-6: crisp blink shut -> pop open
-    #  7-10: suspicious side-eye squint sweeping left -> right
-    # 11-14: cross-eyed googly derp + wiggling pink tongue
-    # 15-17: wide-eyed shocked O_O with jittering pinpricks & pulsing !!
-    # 18-20: cheeky happy wink + pulsing rosy cheeks
-    # 21-23: pulsing hot-pink heart eyes
-    # 24-26: dizzy counter-rotating hypnotic spirals + orbiting stars
-    # 27-29: sleepy drooping lids + rising cyan zZz
-    for f in range(30):
+    # 30 unique frames @ 145 ms (4.35s seamless loop): pure moving eyes, side-eye & blinking
+    #  0-1: calm center
+    #  2-4: look right -> far right -> up-right
+    #  5-6: blink shut -> open
+    #  7-9: look left -> far left -> down-left
+    # 10-11: quick blink -> open
+    # 12-17: suspicious narrow side-eye (left -> pause -> slide right -> hold right)
+    # 18-20: look straight up -> top-right -> bottom-left
+    # 21-23: quick funny cross-eye glance -> blink
+    # 24-26: look right-down -> look left-up -> glance right
+    # 27-29: double blink -> settle back to center
+    keyframes = [
+        # (ldx, ldy, rdx, rdy, top_lid, bot_lid, l_tilt, r_tilt, blink_bar)
+        (0,   0,   0,   0,   0,  0,  0,  0, False),  # 0: center
+        (1,  -1,   1,  -1,   0,  0,  0,  0, False),  # 1: subtle settle
+        (8,  -1,   8,  -1,   0,  0,  0,  0, False),  # 2: glide right
+        (12, -2,  12,  -2,   0,  0,  0,  0, False),  # 3: look right
+        (11, -6,  11,  -6,   0,  0,  0,  0, False),  # 4: look up-right
+        (0,   0,   0,   0,   0,  0,  0,  0, True),   # 5: blink
+        (0,   0,   0,   0,  14, 10,  0,  0, False),  # 6: blink open
+        (-8, -1,  -8,  -1,   0,  0,  0,  0, False),  # 7: glide left
+        (-12,-2, -12,  -2,   0,  0,  0,  0, False),  # 8: look left
+        (-11, 5, -11,   5,   0,  0,  0,  0, False),  # 9: look down-left
+        (0,   0,   0,   0,   0,  0,  0,  0, True),   # 10: blink
+        (-2,  0,  -2,   0,  12,  8,  0,  0, False),  # 11: blink open
+        (-10, 2, -10,   2,  21, 15, -3,  3, False),  # 12: side-eye left
+        (-12, 2, -12,   2,  23, 15, -3,  3, False),  # 13: deeper side-eye left
+        (-9,  2,  -9,   2,  22, 16, -3,  3, False),  # 14: hold side-eye left
+        (4,   2,   4,   2,  22, 15, -3,  3, False),  # 15: slide across
+        (11,  2,  11,   2,  21, 15, -3,  3, False),  # 16: side-eye right
+        (12,  2,  12,   2,  23, 16, -3,  3, False),  # 17: hold side-eye right
+        (0, -11,   0, -11,   0,  0,  0,  0, False),  # 18: look up
+        (9,  -9,   9,  -9,   0,  0,  0,  0, False),  # 19: look top-right
+        (-9,  9,  -9,   9,   0,  0,  0,  0, False),  # 20: look bottom-left
+        (10,  2, -10,   2,   0,  0,  0,  0, False),  # 21: quick cross-eye
+        (11,  3, -11,   3,   0,  0,  0,  0, False),  # 22: cross-eye hold
+        (0,   0,   0,   0,   0,  0,  0,  0, True),   # 23: blink reset
+        (9,   6,   9,   6,   0,  0,  0,  0, False),  # 24: look down-right
+        (-9, -6,  -9,  -6,   0,  0,  0,  0, False),  # 25: look up-left
+        (6,   0,   6,   0,   0,  0,  0,  0, False),  # 26: quick right check
+        (0,   0,   0,   0,   0,  0,  0,  0, True),   # 27: double blink 1
+        (0,   0,   0,   0,  16, 12,  0,  0, False),  # 28: half-open
+        (-1,  0,  -1,   0,   0,  0,  0,  0, False),  # 29: calm center
+    ]
+
+    for ldx, ldy, rdx, rdy, tl, bl, lt, rt, blink_bar in keyframes:
         img = Image.new("RGB", (128, 128), (0, 0, 0))
         d = ImageDraw.Draw(img)
-
-        if f == 0:
-            _draw_cartoon_eye(d, lcx, cy, 0, 0)
-            _draw_cartoon_eye(d, rcx, cy, 0, 0)
-        elif f == 1:
-            _draw_cartoon_eye(d, lcx, cy, 8, -2)
-            _draw_cartoon_eye(d, rcx, cy, 8, -2)
-        elif f == 2:
-            _draw_cartoon_eye(d, lcx, cy, 12, -3)
-            _draw_cartoon_eye(d, rcx, cy, 12, -3)
-        elif f == 3:
-            _draw_cartoon_eye(d, lcx, cy, -9, -1)
-            _draw_cartoon_eye(d, rcx, cy, -9, -1)
-        elif f == 4:
-            _draw_cartoon_eye(d, lcx, cy, -12, -5)
-            _draw_cartoon_eye(d, rcx, cy, -12, -5)
-        elif f == 5:
-            d.rounded_rectangle((14, 60, 58, 65), radius=2, fill=(255, 255, 255))
-            d.rounded_rectangle((70, 60, 114, 65), radius=2, fill=(255, 255, 255))
-        elif f == 6:
-            _draw_cartoon_eye(d, lcx, cy, 0, 0, top_lid=10, bot_lid=8)
-            _draw_cartoon_eye(d, rcx, cy, 0, 0, top_lid=10, bot_lid=8)
-        elif 7 <= f <= 10:
-            looks = (-11, -8, 8, 11)
-            lids = (20, 22, 20, 22)
-            look = looks[f - 7]
-            tl = lids[f - 7]
-            _draw_cartoon_eye(d, lcx, cy, look, 2, top_lid=tl, bot_lid=14, brow_tilt=-4)
-            _draw_cartoon_eye(d, rcx, cy, look, 2, top_lid=tl, bot_lid=14, brow_tilt=4)
-        elif 11 <= f <= 14:
-            wobs = (-3, 1, 4, -1)
-            wob = wobs[f - 11]
-            _draw_cartoon_eye(d, lcx, cy, 11, 6 + wob, iris_col=(80, 245, 160))
-            _draw_cartoon_eye(d, rcx, cy, -11, -6 - wob, iris_col=(255, 180, 40))
-            tx = 54 + wob
-            d.rounded_rectangle((tx, 97, tx + 20, 117), radius=8, fill=(255, 95, 135))
-            d.line((tx + 10, 99, tx + 10, 112), fill=(170, 30, 70), width=2)
-        elif 15 <= f <= 17:
-            jits = ((-2, -2), (3, 1), (-1, 3))
-            jx, jy = jits[f - 15]
-            _draw_cartoon_eye(d, lcx, cy, jx, jy, rx=25, ry=33, tiny_pupil=True)
-            _draw_cartoon_eye(d, rcx, cy, -jx, -jy, rx=25, ry=33, tiny_pupil=True)
-            ex_y = 6 - (f - 15)
-            for ex in (55, 68):
-                d.rounded_rectangle((ex, ex_y, ex + 5, ex_y + 13), radius=2, fill=(255, 225, 40))
-                d.ellipse((ex, ex_y + 16, ex + 5, ex_y + 21), fill=(255, 225, 40))
-        elif 18 <= f <= 20:
-            off = f - 18
-            _draw_cartoon_eye(d, lcx, cy, 2 + off, -2, bot_lid=10 + off, iris_col=(55, 225, 255))
-            d.arc((70, 46 - off, 114, 82 - off), start=200, end=340, fill=(255, 255, 255), width=6)
-            blush_c = (255, 100 + off * 15, 160 + off * 10)
-            d.ellipse((14, 92, 34, 102), fill=blush_c)
-            d.ellipse((94, 92, 114, 102), fill=blush_c)
-        elif 21 <= f <= 23:
-            scales = (0.86, 1.14, 0.98)
-            sc = scales[f - 21]
-            _draw_cartoon_eye(d, lcx, cy, 0, 0, heart_scale=sc)
-            _draw_cartoon_eye(d, rcx, cy, 0, 0, heart_scale=sc)
-            d.ellipse((14, 92, 34, 102), fill=(255, 90, 145))
-            d.ellipse((94, 92, 114, 102), fill=(255, 90, 145))
-        elif 24 <= f <= 26:
-            ang = (f - 24) * 1.9
-            _draw_cartoon_eye(d, lcx, cy, 0, 0, spiral_ang=ang)
-            _draw_cartoon_eye(d, rcx, cy, 0, 0, spiral_ang=-ang)
-            for s in range(3):
-                sa = ang + s * 2.09
-                sx = int(64 + math.cos(sa) * 34)
-                sy = int(16 + math.sin(sa) * 5)
-                d.ellipse((sx - 3, sy - 3, sx + 3, sy + 3), fill=(255, 225, 60))
+        if blink_bar:
+            d.rounded_rectangle((14, 62, 58, 67), radius=2, fill=(252, 253, 255))
+            d.rounded_rectangle((70, 62, 114, 67), radius=2, fill=(252, 253, 255))
         else:
-            step_z = f - 27
-            lid = 24 + step_z * 11
-            _draw_cartoon_eye(d, lcx, cy, 0, 9, top_lid=lid)
-            _draw_cartoon_eye(d, rcx, cy, 0, 9, top_lid=lid)
-            zy = 25 - step_z * 6
-            d.text((88, zy), "zZz", fill=(65, 230, 255))
-            d.text((104, max(3, zy - 9)), "Z", fill=(140, 255, 255))
-
+            _draw_simple_eye(d, lcx, cy, ldx, ldy, top_lid=tl, bot_lid=bl, brow_tilt=lt)
+            _draw_simple_eye(d, rcx, cy, rdx, rdy, top_lid=tl, bot_lid=bl, brow_tilt=rt)
         frames.append(img)
 
-    _save_gif(frames, OUT_DIR / "funny_eyes.gif", duration_ms=160)
+    _save_gif(frames, OUT_DIR / "funny_eyes.gif", duration_ms=145)
 
 
 def gen_bongo_cat() -> None:
