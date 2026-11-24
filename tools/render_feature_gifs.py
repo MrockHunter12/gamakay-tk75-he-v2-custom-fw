@@ -273,6 +273,7 @@ def build_sim_lib(build_dir: pathlib.Path) -> ctypes.CDLL:
     lib.sim_set_side.argtypes = [ctypes.c_uint8] * 6
     lib.sim_set_caps_side.argtypes = [ctypes.c_uint8, ctypes.c_uint8]
     lib.sim_set_tft_cfg.argtypes = [ctypes.c_uint8, ctypes.c_uint8, ctypes.c_uint8]
+    lib.sim_set_tft_theme.argtypes = [ctypes.c_uint8]
     lib.sim_set_hall_cfg.argtypes = [ctypes.c_uint16, ctypes.c_uint8, ctypes.c_uint8]
     lib.sim_set_power_state.argtypes = [ctypes.c_uint8, ctypes.c_uint8, ctypes.c_uint8]
     lib.sim_set_macro_edit.argtypes = [ctypes.c_uint8, ctypes.c_void_p, ctypes.c_uint16, ctypes.c_uint16]
@@ -573,7 +574,7 @@ def render_frame(
     return img
 
 
-def save_gif(frames: list[Image.Image], path: pathlib.Path, duration_ms: int) -> None:
+def save_gif(frames: list[Image.Image], path: pathlib.Path, duration_ms: int, delta: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     sample = Image.new("RGB", (CANVAS_W, CANVAS_H * min(6, len(frames))))
     step = max(1, len(frames) // 6)
@@ -588,7 +589,7 @@ def save_gif(frames: list[Image.Image], path: pathlib.Path, duration_ms: int) ->
         optimize=True,
         duration=duration_ms,
         loop=0,
-        disposal=2,
+        disposal=1 if delta else 2,
     )
     kb = path.stat().st_size / 1024.0
     print(f"Wrote {path.relative_to(ROOT)} ({len(frames)} frames, {kb:.1f} KB)")
@@ -1086,7 +1087,164 @@ def gen_08_hall_macro_system_tft_power(lib: ctypes.CDLL, led_map: dict[tuple[int
     save_gif(frames, ASSETS_DIR / "08_hall_macro_system_power.gif", duration_ms=115)
 
 
+def gen_09_tft_themes_showcase(lib: ctypes.CDLL, _led_map: dict[tuple[int, int], int]) -> None:
+    """Render side-by-side live animated comparison of all 3 TFT skins (PIXEL, STOCK+, TERM)."""
+
+    def capture_theme_sequence(theme_id: int) -> list[tuple[Image.Image, str]]:
+        lib.sim_reset()
+        lib.sim_set_tft_theme(theme_id)
+        lib.sim_set_rgb(1, 210, 2, 140, 128, 255)
+        lib.sim_set_side(1, 180, 2, 140, 170, 255)
+        lib.sim_set_hall_cfg(1800, 1, 1)
+        lib.sim_set_tft_cfg(95, 2, 0)  # SAVR = EYES
+        lib.sim_set_power_state(1, 0, 100)
+
+        out: list[tuple[Image.Image, str]] = []
+        t = 1000
+        tft_buf = (ctypes.c_uint8 * (128 * 128 * 3))()
+
+        def snap(caption: str, wpm: int = 72, sec: int = 12, repeats: int = 1) -> None:
+            nonlocal t
+            for _ in range(repeats):
+                lib.sim_step(t, wpm, 118, 840, 0, 0, 1, 0, 0, 0, 0, 0, 0, 14, 25, sec % 60, None)
+                lib.sim_get_tft_rgb(tft_buf)
+                out.append((Image.frombytes("RGB", (128, 128), bytes(tft_buf)), caption))
+                t += 65
+
+        # 1. Live HOME with analog Hall switch presses (16 frames)
+        press_prof = [0.0, 0.35, 0.72, 1.0, 1.0, 0.55, 0.15, 0.0, 0.0, 0.45, 0.85, 1.0, 0.80, 0.35, 0.0, 0.0]
+        for i, depth in enumerate(press_prof):
+            lib.sim_clear_all_keys()
+            if depth > 0:
+                lib.sim_set_key_travel(3, 1, int(depth * 4000))
+            snap(
+                "HOME Dashboard: Live 8 kHz Hall travel, WPM & classic Hero Clock (STOCK+)",
+                wpm=64 + i * 2,
+                sec=10 + (i // 2),
+            )
+
+        # 2. BRIGHTNESS page with live slider edits (9 frames)
+        lib.sim_hud_open_menu(t)
+        snap("BRIGHTNESS Page: Smooth PWM (PIXEL), 10-step bars (STOCK+) & CRT blocks (TERM)", repeats=3)
+        lib.sim_hud_input(3, t)  # edit TFT
+        for _ in range(2):
+            lib.sim_hud_input(1, t)
+            snap("BRIGHTNESS -> TFT: Live 0..100% backlight adjustment across all 3 skins", repeats=2)
+        lib.sim_hud_input(2, t)
+        lib.sim_hud_input(2, t)
+        lib.sim_hud_input(3, t)  # exit edit
+        snap("BRIGHTNESS Page: Consistent 4-row layout across PIXEL, STOCK+ & TERM", repeats=2)
+
+        # 3. LIGHTING page cycling live RGB565 color swatches (8 frames)
+        lib.sim_hud_input(1, t)  # row 0 tab bar
+        lib.sim_hud_input(2, t)  # LIGHTING
+        lib.sim_hud_input(3, t)  # row 1 FX
+        lib.sim_hud_input(2, t)  # row 2 COL
+        lib.sim_hud_input(3, t)  # edit COL
+        for _ in range(4):
+            lib.sim_hud_input(2, t)
+            snap("LIGHTING Page: Instant zero-wipe page switch + live RGB565 color swatches", repeats=2)
+        lib.sim_hud_input(3, t)
+
+        # 4. HALL SWITCH page cycling all 4 SOCD modes (8 frames)
+        lib.sim_hud_input(1, t)  # row 1
+        lib.sim_hud_input(1, t)  # row 0
+        lib.sim_hud_input(2, t)  # HALL SWITCH
+        lib.sim_hud_input(3, t)  # row 1
+        lib.sim_hud_input(2, t)  # row 2 RT
+        lib.sim_hud_input(2, t)  # row 3 SOCD
+        lib.sim_hud_input(3, t)  # edit SOCD
+        for _ in range(4):
+            lib.sim_hud_input(2, t)
+            snap("HALL SWITCH Page: Actuation, Rapid Trigger, all 4 SOCD modes & 82-Key CAL", repeats=2)
+        lib.sim_hud_input(3, t)
+
+        # 5. POWER page cycling ECO & 7 SAVR modes (10 frames)
+        lib.sim_hud_input(1, t)  # row 2
+        lib.sim_hud_input(1, t)  # row 1
+        lib.sim_hud_input(1, t)  # row 0
+        lib.sim_hud_input(2, t)  # MACRO
+        lib.sim_hud_input(2, t)  # POWER
+        lib.sim_hud_input(3, t)  # row 1 ECO
+        snap("POWER Page: Deep Energy Save (ECO), Screensaver (SAVR), RF Rate & Clock", repeats=3)
+        lib.sim_hud_input(2, t)  # row 2 SAVR
+        lib.sim_hud_input(3, t)  # edit SAVR
+        for _ in range(4):
+            lib.sim_hud_input(2, t)
+            snap("POWER -> SAVR: Cycle CLOCK / EYES / CAT / MATRIX / DVD / Custom U9 GIF", repeats=2)
+        lib.sim_hud_input(3, t)
+
+        # 6. SYSTEM page highlighting SKIN row (8 frames)
+        lib.sim_hud_input(1, t)  # row 1
+        lib.sim_hud_input(1, t)  # row 0
+        lib.sim_hud_input(2, t)  # SYSTEM
+        lib.sim_hud_input(3, t)  # row 1
+        lib.sim_hud_input(2, t)  # row 2
+        lib.sim_hud_input(2, t)  # row 3
+        lib.sim_hud_input(2, t)  # row 4 SKIN
+        snap("SYSTEM -> SKIN: Switch PIXEL <-> STOCK+ <-> TERM live (saved in EEPROM)", repeats=8)
+
+        return out
+
+    seqs = [capture_theme_sequence(0), capture_theme_sequence(1), capture_theme_sequence(2)]
+    n_frames = min(len(s) for s in seqs)
+
+    # Pre-bake sleek 3-bezel studio backdrop (1060x420 matching 01..08 banner width!)
+    bg = Image.new("RGB", (CANVAS_W, CANVAS_H), (12, 14, 19))
+    dr = ImageDraw.Draw(bg)
+    for y in range(CANVAS_H):
+        f = y / CANVAS_H
+        dr.line([(0, y), (CANVAS_W, y)], fill=(int(17 - 7 * f), int(19 - 7 * f), int(25 - 9 * f)))
+
+    panels = [
+        (46,  "0 · PIXEL",  "Obsidian Cyber",   (56, 232, 255), (20, 68, 86)),
+        (402, "1 · STOCK+", "Modified Classic", (51, 166, 255), (26, 56, 88)),
+        (758, "2 · TERM",   "Phosphor CRT",     (51, 255, 102), (18, 72, 36)),
+    ]
+    panel_y = 84
+
+    # Soft themed glow halos behind the 3 bezels
+    halo = Image.new("RGB", (CANVAS_W, CANVAS_H), (0, 0, 0))
+    hdraw = ImageDraw.Draw(halo)
+    for px, _tag, _sub, _fg, glow_col in panels:
+        hdraw.rounded_rectangle([px - 10, panel_y - 10, px + 266, panel_y + 266], radius=16, fill=glow_col)
+    bg = ImageChops.add(bg, halo.filter(ImageFilter.GaussianBlur(radius=14)), scale=1.4)
+    dr = ImageDraw.Draw(bg)
+
+    dr.text((30, 12), "GAMAKAY TK75 HE V2 ISO  ·  MULTI-THEME TFT ENGINE (100% FEATURE PARITY)", fill=(115, 130, 152), font=FONT_TINY)
+    dr.text((30, 26), "3 Persistent TFT Skins — Instant Zero-Animation Switching", fill=(241, 245, 249), font=FONT_TITLE)
+
+    for px, tag, sub, fg, pill_bg in panels:
+        dr.rounded_rectangle([px - 8, panel_y - 8, px + 264, panel_y + 264], radius=12, fill=(18, 20, 26), outline=(58, 66, 82), width=2)
+        dr.line([(px + 4, panel_y - 7), (px + 252, panel_y - 7)], fill=(90, 98, 114), width=1)
+        dr.rounded_rectangle([px - 4, panel_y - 31, px + 96, panel_y - 12], radius=5, fill=pill_bg)
+        dr.text((px + 5, panel_y - 28), tag, fill=fg, font=FONT_BADGE)
+        dr.text((px + 106, panel_y - 27), sub, fill=(165, 178, 198), font=FONT_SUB)
+
+    bar_y0 = CANVAS_H - 46
+    dr.rounded_rectangle([30, bar_y0, CANVAS_W - 30, CANVAS_H - 12], radius=10, fill=(16, 20, 30), outline=(42, 52, 74), width=1)
+    dr.rounded_rectangle([40, bar_y0 + 7, 100, bar_y0 + 27], radius=6, fill=(18, 72, 92))
+    dr.text((48, bar_y0 + 11), "LIVE", fill=(56, 232, 255), font=FONT_BADGE)
+
+    frames: list[Image.Image] = []
+    for i in range(n_frames):
+        fr = bg.copy()
+        fdr = ImageDraw.Draw(fr)
+        for ti, (px, _tag, _sub, _fg, _pb) in enumerate(panels):
+            im128 = seqs[ti][i][0]
+            fr.paste(im128.resize((256, 256), Image.Resampling.NEAREST), (px, panel_y))
+            fdr.rectangle([px - 1, panel_y - 1, px + 256, panel_y + 256], outline=(8, 10, 14), width=1)
+        caption = seqs[0][i][1]
+        fdr.text((112, bar_y0 + 10), caption, fill=(226, 232, 240), font=FONT_SUB)
+        frames.append(fr)
+
+    save_gif(frames, ASSETS_DIR / "09_tft_themes_showcase.gif", duration_ms=135, delta=True)
+
+
 def main() -> int:
+    import sys
+
+    only = sys.argv[1] if len(sys.argv) > 1 else None
     with tempfile.TemporaryDirectory() as tmp:
         lib = build_sim_lib(pathlib.Path(tmp))
         u24_arg = str(U24_BIN).encode() if U24_BIN.exists() else None
@@ -1094,18 +1252,20 @@ def main() -> int:
 
         led_map = {(r, c): int(lib.sim_led_idx(r, c)) for r, c, *_ in KEY_DEFS}
 
-        generators: list[Callable[[ctypes.CDLL, dict[tuple[int, int], int]], None]] = [
-            gen_01_live_home_hall,
-            gen_02_tft_menu_brightness_lighting,
-            gen_03_caps_lock_accent_bar,
-            gen_04_macro_record_playback,
-            gen_05_hall_calibration,
-            gen_06_screensaver_wake,
-            gen_07_layers_rgb_effects,
-            gen_08_hall_macro_system_tft_power,
+        generators: list[tuple[str, Callable[[ctypes.CDLL, dict[tuple[int, int], int]], None]]] = [
+            ("01", gen_01_live_home_hall),
+            ("02", gen_02_tft_menu_brightness_lighting),
+            ("03", gen_03_caps_lock_accent_bar),
+            ("04", gen_04_macro_record_playback),
+            ("05", gen_05_hall_calibration),
+            ("06", gen_06_screensaver_wake),
+            ("07", gen_07_layers_rgb_effects),
+            ("08", gen_08_hall_macro_system_tft_power),
+            ("09", gen_09_tft_themes_showcase),
         ]
-        for fn in generators:
-            fn(lib, led_map)
+        for key, fn in generators:
+            if only is None or only == key:
+                fn(lib, led_map)
     return 0
 
 

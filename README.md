@@ -12,13 +12,22 @@ Native open-source C11 + TinyUSB **custom firmware** for the **GamaKay TK75 HE V
 > - **Built-in safety net:** The factory DFU bootloader (`0x08000000..0x08004FFF`, hold **`Esc`** while plugging in USB) and factory Hall calibration (`0x08032000..0x08033FFF`) are **never erased**, and both the AT32 MCU and `U24` TFT can be restored to stock firmware.
 > - **Disclaimer:** Unofficial community project — **not affiliated with, endorsed by, or supported by GamaKay or Artery Technology.** All trademarks belong to their respective owners. No proprietary vendor firmware binaries are distributed in this repository.
 
+![3 Persistent TFT Skins: PIXEL, STOCK+ & TERM (Live Animated)](docs/assets/09_tft_themes_showcase.gif)
+
 ![Live 8 kHz Hall-Effect Switch HUD & Analog Travel](docs/assets/01_live_home_hall_switch.gif)
 
 ![TFT Menu: Brightness, Colors & Lighting Effects](docs/assets/02_tft_menu_brightness_lighting.gif)
 
 ![Xtrfy K5-Style Onboard Macro Recorder, Speed & Live Glow](docs/assets/04_macro_record_playback.gif)
 
-> **See all 8 live firmware-rendered GIF demos, full shortcut cheat-sheet, and complete VIA channel map in [docs/FEATURES.md](docs/FEATURES.md).**
+### Selectable Idle Screensavers & Bundled Animated GIFs (`U9` Flash)
+
+| `funny_eyes.gif` | `bongo_cat.gif` | `party_parrot.gif` | `nyan_space.gif` | `coffee_afk.gif` |
+|:-:|:-:|:-:|:-:|:-:|
+| ![Funny Eyes](assets/gifs/funny_eyes.gif) | ![Bongo Cat](assets/gifs/bongo_cat.gif) | ![Party Parrot](assets/gifs/party_parrot.gif) | ![Nyan Space](assets/gifs/nyan_space.gif) | ![Coffee AFK](assets/gifs/coffee_afk.gif) |
+| Calm moving / side-eye / blinking | RGB desk cat | Rainbow party parrot | Space cat & stars | Neon steam mug |
+
+> **See all 9 live firmware-rendered GIF demos, full shortcut cheat-sheet, and complete VIA channel map in [docs/FEATURES.md](docs/FEATURES.md).**
 
 ---
 

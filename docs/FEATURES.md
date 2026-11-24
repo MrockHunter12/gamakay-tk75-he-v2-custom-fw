@@ -53,6 +53,8 @@ Every live animation below is rendered **directly from the actual AT32F405 C fir
 
 ## 2. 7-Page Multi-Theme Onboard TFT Menu: `PIXEL`, `STOCK+` & `TERM`
 
+![3 Persistent TFT Skins: PIXEL, STOCK+ & TERM (Live Animated)](assets/09_tft_themes_showcase.gif)
+
 ![TFT Menu: Brightness, Colors & Lighting Effects](assets/02_tft_menu_brightness_lighting.gif)
 
 Press **`Fn + Knob Push`** to enter the interactive **7-page** menu (auto-exits after 15 s of inactivity, or press **`Fn + Knob Push`** again anytime to return immediately to Volume mode). Page switches are **instant** (zero page-wipe animation).
