@@ -187,11 +187,15 @@ static void merge_into_report(macro_player_t const *mp, keymap_report_t *rep)
   for (uint8_t i = 0U; i < MACRO_MAX_CONCURRENT_KEYS; i++) {
     uint8_t k = mp->held_keys[i];
     if (k > 0U && k < 0x80U) {
-      rep->nkro_bitmap[k >> 3U] |= (uint8_t)(1U << (k & 7U));
-      if (rep->pressed_count < 6U) {
-        rep->boot_keys[rep->pressed_count] = k;
+      uint8_t byte_idx = k >> 3U;
+      uint8_t bit_mask = (uint8_t)(1U << (k & 7U));
+      if ((rep->nkro_bitmap[byte_idx] & bit_mask) == 0U) {
+        rep->nkro_bitmap[byte_idx] |= bit_mask;
+        if (rep->pressed_count < 6U) {
+          rep->boot_keys[rep->pressed_count] = k;
+        }
+        rep->pressed_count++;
       }
-      rep->pressed_count++;
     }
   }
 }

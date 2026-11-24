@@ -181,6 +181,9 @@ bool spi3_rf_send_via(uint8_t const *pkt32);
 /** Service DMA completion, PD2 IRQ polling, auto-resync retries, and VIA RX callback. */
 void spi3_rf_service(uint32_t now_ms, uint8_t battery_pct, spi3_rf_via_rx_cb_t via_cb, void *via_ctx);
 
+/** Returns true when SPI3 RF has an unprocessed RX frame or immediately dispatchable TX work. */
+bool spi3_rf_has_pending_work(void);
+
 /** Return read-only pointer to live RF connection/LED state. */
 spi3_rf_state_t const *spi3_rf_get_state(void);
 #endif

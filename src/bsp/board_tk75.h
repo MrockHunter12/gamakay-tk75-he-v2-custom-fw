@@ -20,6 +20,9 @@ void board_usb_otghs_init(void);
 /** Register and start the 8 kHz (125 us) Hall scan tick timer (TMR6). */
 void board_start_scan_timer(board_scan_cb_t cb);
 
+/** Switch TMR6 Hall scan period in microseconds (125 us = 8 kHz .. 20000 us = 50 Hz). */
+void board_set_scan_period_us(uint16_t period_us);
+
 /** Switch TMR6 Hall scan rate between 8 kHz (125 us, slow=false) and 200 Hz (5000 us, slow=true) for battery sleep. */
 void board_set_scan_rate_sleep(bool slow);
 
@@ -43,6 +46,9 @@ void board_set_tft_power(bool on);
 
 /** Enable or soft-disconnect OTGHS1 USB D+/D- pull-up resistor. */
 void board_usb_set_connect(bool connected);
+
+/** Power on or fully gate OTGHS1 HS PHY + 48 MHz PLLU (saves ~25 mA in wireless battery mode). */
+void board_usb_set_phy_power(bool on);
 
 /** Enter low-power wait-for-interrupt state until next timer/SysTick/IRQ wakeup. */
 void board_wfi(void);

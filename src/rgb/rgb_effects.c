@@ -33,7 +33,8 @@ rgb_grb_t rgb_hsv_to_grb(uint8_t hue, uint8_t sat, uint8_t val)
     return out;
   }
 
-  uint8_t region    = hue / 43U;
+  /* Bit-identical to hue / 43U for all 0..255 with zero integer division */
+  uint8_t region    = (uint8_t)(((uint32_t)hue * 6097U) >> 18U);
   uint8_t remainder = (uint8_t)((hue - (region * 43U)) * 6U);
   uint8_t p = (uint8_t)(((uint16_t)val * (255U - sat)) >> 8U);
   uint8_t q = (uint8_t)(((uint16_t)val * (255U - (((uint16_t)sat * remainder) >> 8U))) >> 8U);
@@ -64,7 +65,35 @@ static bool key_matches_macro_slot(tk75_persist_cfg_t const *cfg, uint8_t row, u
   return cfg->keymap[1][row][col] == target || cfg->keymap[0][row][col] == target;
 }
 
+typedef struct {
+  uint8_t   phase;
+  uint32_t  layer_mask;
+  bool      fn_held;
+  uint16_t  macro_pop_mask;
+  rgb_grb_t uniform_base;
+  rgb_grb_t macro_hl_col;
+} rgb_frame_cache_t;
+
+static uint16_t build_macro_populated_mask(uint8_t const *macros)
+{
+  uint16_t mask = 0U;
+  uint16_t off  = 0U;
+  for (uint8_t slot = 0U; slot < TK75_MACRO_COUNT && off < TK75_MACRO_BUF_BYTES; slot++) {
+    if (macros[off] != 0U) {
+      mask |= (uint16_t)(1U << slot);
+    }
+    while (off < TK75_MACRO_BUF_BYTES && macros[off] != 0U) {
+      off++;
+    }
+    if (off < TK75_MACRO_BUF_BYTES) {
+      off++;
+    }
+  }
+  return mask;
+}
+
 static rgb_grb_t render_overlay_layer_color(rgb_render_ctx_t const *ctx,
+                                            rgb_frame_cache_t const *fc,
                                             uint8_t layer,
                                             uint16_t layer_kc,
                                             uint8_t bright)
@@ -77,7 +106,7 @@ static rgb_grb_t render_overlay_layer_color(rgb_render_ctx_t const *ctx,
      * - Colored base (sat >= 128): Equilateral triad (+85 = 120 deg Fn, +171 = 240 deg Macros). */
     bool is_populated_macro =
         ((layer_kc & 0xFFF0U) == QK_MACRO_BASE) &&
-        macro_recorder_slot_has_data(cfg->macros, (uint8_t)(layer_kc & 0x0FU));
+        ((fc->macro_pop_mask & (uint16_t)(1U << (layer_kc & 0x0FU))) != 0U);
 
     if (cfg->rgb_effect == RGB_FX_RAINBOW_WAVE) {
       return is_populated_macro ? rgb_hsv_to_grb(85U, 255U, bright)
@@ -100,12 +129,12 @@ static rgb_grb_t render_overlay_layer_color(rgb_render_ctx_t const *ctx,
 }
 
 static uint8_t resolve_overlay_highlight_layer(rgb_render_ctx_t const *ctx,
+                                               uint32_t mask,
                                                uint8_t row,
                                                uint8_t col,
                                                uint16_t *out_kc)
 {
   tk75_persist_cfg_t const *cfg = ctx->cfg;
-  uint32_t mask = (ctx->layer_mask != 0U) ? ctx->layer_mask : (1UL << ctx->active_layer);
   if ((mask & ~1UL) == 0U) {
     return 0U;
   }
@@ -134,7 +163,12 @@ static uint8_t resolve_overlay_highlight_layer(rgb_render_ctx_t const *ctx,
 static uint8_t blend_u8(uint8_t base, uint8_t target, uint8_t alpha)
 {
   int32_t diff = (int32_t)target - (int32_t)base;
-  return (uint8_t)((int32_t)base + ((diff * (int32_t)alpha) / 255));
+  if (diff >= 0) {
+    uint32_t p = (uint32_t)diff * (uint32_t)alpha;
+    return (uint8_t)((uint32_t)base + ((p + 1U + (p >> 8U)) >> 8U));
+  }
+  uint32_t p = (uint32_t)(-diff) * (uint32_t)alpha;
+  return (uint8_t)((uint32_t)base - ((p + 1U + (p >> 8U)) >> 8U));
 }
 
 static rgb_grb_t blend_grb(rgb_grb_t base, rgb_grb_t target, uint8_t alpha)
@@ -164,26 +198,26 @@ static bool key_is_macro_typed(rgb_render_ctx_t const *ctx, uint8_t row, uint8_t
   return (ctx->macro_typed_bitmap[code >> 3U] & (uint8_t)(1U << (code & 7U))) != 0U;
 }
 
-static rgb_grb_t render_base_effect_color(rgb_render_ctx_t const *ctx, uint8_t row, uint8_t col, uint8_t led_idx)
+static rgb_grb_t render_base_effect_color(rgb_render_ctx_t const *ctx,
+                                          rgb_frame_cache_t const *fc,
+                                          uint8_t row,
+                                          uint8_t col,
+                                          uint8_t led_idx)
 {
   tk75_persist_cfg_t const *cfg = ctx->cfg;
-  uint32_t phase  = (ctx->now_ms * ((uint32_t)cfg->rgb_speed + 32U)) >> 9U;
-  uint8_t  bright = cfg->rgb_brightness;
-  uint16_t travel = hall_engine_get_travel_um(ctx->hall, row, col);
+  uint8_t bright = cfg->rgb_brightness;
 
   switch (cfg->rgb_effect) {
     case RGB_FX_RAINBOW_WAVE: {
-      uint8_t h = (uint8_t)(cfg->rgb_hue + (col * 14U) + (row * 10U) - (phase & 0xFFU));
+      uint8_t h = (uint8_t)(cfg->rgb_hue + (col * 14U) + (row * 10U) - fc->phase);
       return rgb_hsv_to_grb(h, cfg->rgb_sat, bright);
     }
     case RGB_FX_SOLID:
-      return rgb_hsv_to_grb(cfg->rgb_hue, cfg->rgb_sat, bright);
+    case RGB_FX_BREATHING:
+      return fc->uniform_base;
 
-    case RGB_FX_BREATHING: {
-      uint8_t v = scale8(triangle_wave8((uint8_t)(phase & 0xFFU)), bright);
-      return rgb_hsv_to_grb(cfg->rgb_hue, cfg->rgb_sat, v);
-    }
     case RGB_FX_HE_ANALOG_DEPTH: {
+      uint16_t travel  = hall_engine_get_travel_um(ctx->hall, row, col);
       /* Idle dim base + progressive cyan->magenta->white flare proportional to Hall travel */
       uint8_t floor_v = (uint8_t)(bright >> 3U);
       uint8_t dyn_v   = (uint8_t)(((uint32_t)travel * (uint32_t)(bright - floor_v)) / HALL_MAX_TRAVEL_UM);
@@ -212,7 +246,11 @@ static rgb_grb_t render_base_effect_color(rgb_render_ctx_t const *ctx, uint8_t r
   }
 }
 
-static rgb_grb_t render_key_color(rgb_render_ctx_t const *ctx, uint8_t row, uint8_t col, uint8_t led_idx)
+static rgb_grb_t render_key_color(rgb_render_ctx_t const *ctx,
+                                  rgb_frame_cache_t const *fc,
+                                  uint8_t row,
+                                  uint8_t col,
+                                  uint8_t led_idx)
 {
   tk75_persist_cfg_t const *cfg    = ctx->cfg;
   uint8_t                   bright = cfg->rgb_brightness;
@@ -248,14 +286,13 @@ static rgb_grb_t render_key_color(rgb_render_ctx_t const *ctx, uint8_t row, uint
 
   rgb_grb_t color;
   uint16_t  ov_kc    = KC_NO;
-  uint8_t   ov_layer = resolve_overlay_highlight_layer(ctx, row, col, &ov_kc);
+  uint8_t   ov_layer = resolve_overlay_highlight_layer(ctx, fc->layer_mask, row, col, &ov_kc);
   if (ov_layer > 0U) {
-    color = render_overlay_layer_color(ctx, ov_layer, ov_kc, bright);
+    color = render_overlay_layer_color(ctx, fc, ov_layer, ov_kc, bright);
   } else {
-    color = render_base_effect_color(ctx, row, col, led_idx);
+    color = render_base_effect_color(ctx, fc, row, col, led_idx);
     /* Dim unbound keys to 25% while Fn (Layer 1) is held so Fn & Macro keys pop unmistakably */
-    uint32_t mask = (ctx->layer_mask != 0U) ? ctx->layer_mask : (1UL << ctx->active_layer);
-    if ((mask & (1UL << 1U)) != 0U) {
+    if (fc->fn_held) {
       color.g >>= 2U;
       color.r >>= 2U;
       color.b >>= 2U;
@@ -264,9 +301,7 @@ static rgb_grb_t render_key_color(rgb_render_ctx_t const *ctx, uint8_t row, uint
 
   uint8_t mglow = ctx->fx->macro_glow[led_idx];
   if (mglow > 0U) {
-    uint8_t hl_h = (uint8_t)(cfg->rgb_hue + 128U);
-    uint8_t hl_s = (cfg->rgb_sat >= 64U) ? cfg->rgb_sat : 200U;
-    color = blend_grb(color, rgb_hsv_to_grb(hl_h, hl_s, bright), mglow);
+    color = blend_grb(color, fc->macro_hl_col, mglow);
   }
   return color;
 }
@@ -366,11 +401,28 @@ void rgb_effects_render(rgb_render_ctx_t const *ctx, rgb_grb_t out_leds[RGB_LED_
   }
 
   if (cfg->rgb_enabled != 0U && cfg->rgb_effect != RGB_FX_OFF && cfg->rgb_brightness != 0U) {
+    rgb_frame_cache_t fc;
+    fc.phase      = (uint8_t)(((ctx->now_ms * ((uint32_t)cfg->rgb_speed + 32U)) >> 9U) & 0xFFU);
+    fc.layer_mask = (ctx->layer_mask != 0U) ? ctx->layer_mask : (1UL << ctx->active_layer);
+    fc.fn_held    = ((fc.layer_mask & (1UL << 1U)) != 0U);
+    fc.macro_pop_mask = fc.fn_held ? build_macro_populated_mask(cfg->macros) : 0U;
+    if (cfg->rgb_effect == RGB_FX_SOLID) {
+      fc.uniform_base = rgb_hsv_to_grb(cfg->rgb_hue, cfg->rgb_sat, cfg->rgb_brightness);
+    } else if (cfg->rgb_effect == RGB_FX_BREATHING) {
+      uint8_t v = scale8(triangle_wave8(fc.phase), cfg->rgb_brightness);
+      fc.uniform_base = rgb_hsv_to_grb(cfg->rgb_hue, cfg->rgb_sat, v);
+    } else {
+      fc.uniform_base = (rgb_grb_t){ 0U, 0U, 0U };
+    }
+    uint8_t hl_h    = (uint8_t)(cfg->rgb_hue + 128U);
+    uint8_t hl_s    = (cfg->rgb_sat >= 64U) ? cfg->rgb_sat : 200U;
+    fc.macro_hl_col = rgb_hsv_to_grb(hl_h, hl_s, cfg->rgb_brightness);
+
     for (uint8_t r = 0U; r < HALL_ROWS; r++) {
       for (uint8_t c = 0U; c < HALL_COLS; c++) {
         uint8_t led_idx = k_matrix_led_map[r][c];
         if (led_idx < RGB_KEY_LED_COUNT) {
-          out_leds[led_idx] = render_key_color(ctx, r, c, led_idx);
+          out_leds[led_idx] = render_key_color(ctx, &fc, r, c, led_idx);
         }
       }
     }

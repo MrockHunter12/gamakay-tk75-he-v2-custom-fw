@@ -179,6 +179,17 @@ hall_cal_evt_t hall_cal_step(hall_cal_t *cal, hall_engine_t *hall, tk75_persist_
       }
     }
     if (!any_down) {
+      /* Re-snapshot clean resting ADC now that all launch keys are released */
+      for (uint32_t i = 0U; i < HALL_SLOT_COUNT; i++) {
+        if (hall->active_mask[i] == 0U) {
+          continue;
+        }
+        uint16_t base = (hall->states[i].filtered_adc > 800U)
+                          ? hall->states[i].filtered_adc
+                          : hall->states[i].rest_adc;
+        cal->rest_adc[i] = base;
+        cal->min_adc[i]  = base;
+      }
       cal->wait_start_release = false;
     }
     return HALL_CAL_EVT_NONE;

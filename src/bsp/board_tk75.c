@@ -8,8 +8,10 @@
 #define ADC_CH_ESC_PC0           ADC_CHANNEL_10
 #define AT32_UID_BASE_ADDR       0x1FFFF7E8UL
 
-static volatile uint32_t g_ms_ticks = 0U;
-static board_scan_cb_t   g_scan_cb = NULL;
+static volatile uint32_t g_ms_ticks       = 0U;
+static board_scan_cb_t   g_scan_cb        = NULL;
+static uint16_t          g_scan_period_us = 125U;
+static bool              g_usb_phy_on     = false;
 
 static void configure_system_clocks_216mhz(void)
 {
@@ -193,15 +195,18 @@ void board_usb_otghs_init(void)
   crm_periph_reset(CRM_OTGHS_PERIPH_RESET, FALSE);
 
   /* Disable VBUS sensing (GCCFG bit 21) and power on transceiver (bit 16) */
+  *(__IO uint32_t *)0x40040E00UL &= ~0x01UL;
   *(__IO uint32_t *)0x40040038UL |= (1UL << 21) | (1UL << 16);
   board_delay_us(1000U);
 
   nvic_irq_enable(OTGHS_IRQn, 1U, 0U);
+  g_usb_phy_on = true;
 }
 
 void board_start_scan_timer(board_scan_cb_t cb)
 {
-  g_scan_cb = cb;
+  g_scan_cb        = cb;
+  g_scan_period_us = 125U;
 
   /* APB1 timer clock = 216 MHz -> div 216 = 1 MHz, PR = 124 -> 125 us (8 kHz) */
   crm_periph_clock_enable(CRM_TMR6_PERIPH_CLOCK, TRUE);
@@ -211,12 +216,26 @@ void board_start_scan_timer(board_scan_cb_t cb)
   tmr_counter_enable(TMR6, TRUE);
 }
 
-void board_set_scan_rate_sleep(bool slow)
+void board_set_scan_period_us(uint16_t period_us)
 {
+  if (period_us < 125U) {
+    period_us = 125U;
+  } else if (period_us > 20000U) {
+    period_us = 20000U;
+  }
+  if (period_us == g_scan_period_us) {
+    return;
+  }
+  g_scan_period_us = period_us;
   tmr_counter_enable(TMR6, FALSE);
-  tmr_period_value_set(TMR6, slow ? 4999U : 124U);
+  tmr_period_value_set(TMR6, (uint32_t)(period_us - 1U));
   tmr_counter_value_set(TMR6, 0U);
   tmr_counter_enable(TMR6, TRUE);
+}
+
+void board_set_scan_rate_sleep(bool slow)
+{
+  board_set_scan_period_us(slow ? 5000U : 125U);
 }
 
 void board_set_scan_timer_enabled(bool enabled)
@@ -232,13 +251,15 @@ uint32_t board_millis(void)
 uint32_t board_micros(void)
 {
   uint32_t ms1 = g_ms_ticks;
-  uint16_t cnt = (uint16_t)tmr_counter_value_get(TMR3);
+  uint32_t val = SysTick->VAL;
   uint32_t ms2 = g_ms_ticks;
 
   if (ms1 != ms2) {
-    cnt = (uint16_t)tmr_counter_value_get(TMR3);
+    val = SysTick->VAL;
   }
-  return (ms2 * 1000U) + (uint32_t)(cnt % 1000U);
+  uint32_t ticks_per_us = system_core_clock / 1000000U;
+  uint32_t elapsed      = (SysTick->LOAD >= val) ? (SysTick->LOAD - val) : 0U;
+  return (ms2 * 1000U) + (elapsed / ticks_per_us);
 }
 
 void board_delay_us(uint32_t us)
@@ -273,12 +294,38 @@ void board_set_tft_power(bool on)
 
 void board_usb_set_connect(bool connected)
 {
+  if (!g_usb_phy_on) {
+    return;
+  }
   /* OTGHS1 DCTL (0x40040804) bit 1 = SftDiscon (1=detach pull-up, 0=attach) */
   if (connected) {
     *(__IO uint32_t *)0x40040804UL &= ~0x02UL;
   } else {
     *(__IO uint32_t *)0x40040804UL |= 0x02UL;
   }
+}
+
+void board_usb_set_phy_power(bool on)
+{
+  if (on) {
+    if (!g_usb_phy_on) {
+      board_usb_otghs_init();
+    }
+    return;
+  }
+
+  /* Match Artery reduce_power_consumption(): stop OTGHS PHY + 48 MHz PLLU when wireless. */
+  nvic_irq_disable(OTGHS_IRQn);
+  if ((CRM->ahben1 & (1UL << 29U)) == 0U) {
+    crm_periph_clock_enable(CRM_OTGHS_PERIPH_CLOCK, TRUE);
+  }
+  *(__IO uint32_t *)0x40040804UL |= 0x02UL;
+  *(__IO uint32_t *)0x40040038UL |= (1UL << 22U);
+  *(__IO uint32_t *)0x40040E00UL |= 0x01UL;
+  *(__IO uint32_t *)0x40040038UL &= ~(1UL << 16U);
+  crm_periph_clock_enable(CRM_OTGHS_PERIPH_CLOCK, FALSE);
+  crm_pllu_output_set(FALSE);
+  g_usb_phy_on = false;
 }
 
 void board_wfi(void)
@@ -289,8 +336,10 @@ void board_wfi(void)
 __attribute__((noreturn)) void board_enter_bootloader(void)
 {
   /* Trigger USB soft disconnect if active so host re-enumerates DFU cleanly */
-  *(__IO uint32_t *)0x40040804UL |= 0x02UL;
-  board_delay_us(20000U);
+  if (g_usb_phy_on) {
+    *(__IO uint32_t *)0x40040804UL |= 0x02UL;
+    board_delay_us(20000U);
+  }
 
   __disable_irq();
   flash_unlock();

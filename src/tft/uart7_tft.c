@@ -177,6 +177,7 @@ void uart7_tft_set_bus_power(bool enabled)
     usart_dma_transmitter_enable(TK75_TFT_UART, FALSE);
     usart_dma_receiver_enable(TK75_TFT_UART, FALSE);
     usart_enable(TK75_TFT_UART, FALSE);
+    crm_periph_clock_enable(CRM_UART7_PERIPH_CLOCK, FALSE);
     g_tx_busy = false;
 
     /* Drive TX/RX LOW with no pull-up so U24 & ST7735S discharge cleanly to 0V (no ESD back-powering) */

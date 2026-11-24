@@ -722,12 +722,25 @@ void spi3_rf_service(uint32_t now_ms, uint8_t battery_pct, spi3_rf_via_rx_cb_t v
   }
 
   bool irq_low = (gpio_input_data_bit_read(TK75_RF_IRQ_PORT, TK75_RF_IRQ_PIN) == RESET);
+  /* When RF link is established and PD2 IRQ is idle, relax fallback poll to 60ms to save battery */
+  uint32_t poll_gap_ms = g_rf.link_up ? 60U : 25U;
   if (g_rf.target_mode != SPI3_RF_MODE_USB &&
-      (irq_low || (uint32_t)(now_ms - g_rf.last_poll_ms) >= 25U)) {
+      (irq_low || (uint32_t)(now_ms - g_rf.last_poll_ms) >= poll_gap_ms)) {
     g_rf.last_poll_ms = now_ms;
     uint16_t len      = spi3_rf_build_poll(pkt, (uint16_t)sizeof(pkt));
     kick_dma(pkt, len, SPI3_TX_POLL);
   }
+}
+
+bool spi3_rf_has_pending_work(void)
+{
+  if (g_rx_ready) {
+    return true;
+  }
+  if (!g_dma_busy && !g_rf.sleeping && g_q_tail != g_q_head) {
+    return true;
+  }
+  return false;
 }
 
 spi3_rf_state_t const *spi3_rf_get_state(void)

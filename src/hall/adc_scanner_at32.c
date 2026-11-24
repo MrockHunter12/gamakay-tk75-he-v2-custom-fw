@@ -194,6 +194,11 @@ uint16_t const *adc_scanner_poll_frame(void)
   return g_frames[g_ready_idx];
 }
 
+bool adc_scanner_frame_pending(void)
+{
+  return g_frame_ready;
+}
+
 uint16_t adc_scanner_get_vbat_raw(void)
 {
   return g_vbat_primed ? g_vbat_filt : 0U;

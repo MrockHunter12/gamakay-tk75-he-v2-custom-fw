@@ -349,6 +349,7 @@ void hall_engine_process_frame(hall_engine_t *engine, uint16_t const raw_frame[H
 
   update_common_mode_rail(engine);
 
+  uint16_t max_travel = 0U;
   for (uint32_t i = 0U; i < HALL_SLOT_COUNT; i++) {
     if (engine->active_mask[i] == 0U) {
       continue;
@@ -357,6 +358,9 @@ void hall_engine_process_frame(hall_engine_t *engine, uint16_t const raw_frame[H
     hall_key_config_t const *cfg = &engine->configs[i];
 
     st->travel_um = compute_travel_um(st, engine->rail_scale_q12);
+    if (st->travel_um > max_travel) {
+      max_travel = st->travel_um;
+    }
     if (cfg->rt_enabled) {
       update_rapid_trigger(cfg, st);
     } else {
@@ -366,6 +370,16 @@ void hall_engine_process_frame(hall_engine_t *engine, uint16_t const raw_frame[H
   }
 
   hall_engine_apply_socd(engine);
+
+  uint16_t pressed = 0U;
+  for (uint32_t i = 0U; i < HALL_SLOT_COUNT; i++) {
+    if (engine->active_mask[i] != 0U && engine->states[i].logical_pressed) {
+      pressed++;
+    }
+  }
+  engine->max_travel_um = max_travel;
+  engine->pressed_count = pressed;
+  engine->any_actuated  = (pressed > 0U);
 }
 
 void hall_engine_apply_socd(hall_engine_t *engine)

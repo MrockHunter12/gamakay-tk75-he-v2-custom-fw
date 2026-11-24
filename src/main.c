@@ -46,6 +46,7 @@ typedef struct {
   macro_recorder_t    macro_rec;
   rgb_effects_state_t rgb_fx;
   rgb_grb_t           leds[RGB_LED_COUNT];
+  rgb_grb_t           sent_leds[RGB_LED_COUNT];
   via_context_t       via;
   via_diag_t          diag;
   hud_engine_t        hud;
@@ -71,8 +72,11 @@ typedef struct {
   uint32_t            session_keys;
 
   uint32_t            last_rgb_ms;
+  uint32_t            last_rgb_force_ms;
   uint32_t            last_enc_ms;
   uint32_t            last_hud_ms;
+  uint32_t            last_wpm_ms;
+  uint32_t            last_px_live_ms;
   uint32_t            last_batt_ms;
   uint32_t            last_activity_ms;
   uint32_t            tft_power_on_ms;
@@ -84,8 +88,12 @@ typedef struct {
   bool                vbus_present;
   bool                charging;
   bool                hw_charging;
+  bool                energy_save;
   bool                asleep;
+  bool                rgb_rail_on;
+  bool                rgb_force_refresh;
   bool                tft_rail_on;
+  bool                usb_phy_on;
   bool                rf_nkro_active;
   bool                enc_prev_btn;
 
@@ -126,12 +134,70 @@ static bool send_via_reply(tk75_fw_t *fw)
   return spi3_rf_send_via(fw->via_reply);
 }
 
+static void update_adaptive_scan_rate(tk75_fw_t const *fw)
+{
+  if (fw->asleep) {
+    board_set_scan_period_us(5000U); /* 200 Hz battery deep sleep (5 ms wake) */
+    return;
+  }
+  if (fw->energy_save) {
+    board_set_scan_period_us(2000U); /* 500 Hz wired energy save (2 ms wake) */
+    return;
+  }
+  if (fw->active_conn_mode == TK75_CONN_USB) {
+    board_set_scan_period_us(125U); /* Full 8000 Hz USB wired scan */
+    return;
+  }
+  if (fw->active_conn_mode == TK75_CONN_24G) {
+    static uint16_t const k_24g_periods[4] = { 500U, 1000U, 2000U, 2000U };
+    uint8_t idx = (fw->cfg.rf_poll_rate_idx < 4U) ? fw->cfg.rf_poll_rate_idx : 0U;
+    board_set_scan_period_us(k_24g_periods[idx]);
+    return;
+  }
+  /* Bluetooth: 500 Hz scan (2 ms latency vs 8 ms BLE interval, 16x less Hall power) */
+  board_set_scan_period_us(2000U);
+}
+
+static bool is_rgb_output_needed(tk75_fw_t const *fw, uint32_t now_ms)
+{
+  if (fw->energy_save || fw->asleep) {
+    return false;
+  }
+  tk75_persist_cfg_t const *c = &fw->cfg;
+  uint8_t host_leds = active_host_leds(fw);
+  bool caps_on      = ((host_leds & 0x02U) != 0U);
+  bool matrix_on    = (c->rgb_enabled != 0U) && (c->rgb_effect != RGB_FX_OFF) && (c->rgb_brightness > 0U);
+  bool side_on      = (c->side_enabled != 0U) && (c->side_effect != RGB_FX_OFF) && (c->side_brightness > 0U);
+  bool caps_ind_on  = (c->caps_ind_enabled != 0U) && caps_on;
+  bool caps_side_on = (c->caps_side_enabled != 0U) && caps_on;
+  bool win_lock_on  = (c->win_lock != 0U);
+  bool saved_flash  = (fw->macro_rec.saved_until_ms != 0U) &&
+                      ((int32_t)(fw->macro_rec.saved_until_ms - now_ms) > 0);
+  bool modal_on     = hall_cal_is_active(&fw->hall_cal) ||
+                      macro_recorder_is_capturing(&fw->macro_rec) ||
+                      saved_flash;
+  return matrix_on || side_on || caps_ind_on || caps_side_on || win_lock_on || modal_on;
+}
+
 static void sync_power_rails(tk75_fw_t *fw)
 {
-  bool caps_side_on = (fw->cfg.caps_side_enabled != 0U) && ((active_host_leds(fw) & 0x02U) != 0U);
-  bool rgb_on       = !fw->asleep && (fw->cfg.rgb_enabled != 0U || fw->cfg.side_enabled != 0U || caps_side_on);
-  bool tft_on       = !fw->asleep && (fw->cfg.tft_enabled != 0U);
-  board_set_rgb_power(rgb_on);
+  uint32_t now_ms = board_millis();
+  bool rgb_on     = is_rgb_output_needed(fw, now_ms);
+  bool tft_on     = !fw->energy_save && !fw->asleep && (fw->cfg.tft_enabled != 0U);
+
+  if (!rgb_on) {
+    /* Quiesce SPI2 MOSI PA10 to 0V before cutting 5V RGB boost (zero ESD back-powering) */
+    ws2812_set_bus_power(false);
+    board_set_rgb_power(false);
+    fw->rgb_rail_on = false;
+  } else {
+    board_set_rgb_power(true);
+    ws2812_set_bus_power(true);
+    if (!fw->rgb_rail_on) {
+      fw->rgb_rail_on       = true;
+      fw->rgb_force_refresh = true;
+    }
+  }
 
   if (!tft_on) {
     /* Quiesce UART7 TX/RX to 0V before cutting TFT rail so U24 & ST7735S do a true 0V cold POR */
@@ -143,7 +209,6 @@ static void sync_power_rails(tk75_fw_t *fw)
 
   board_set_tft_power(true);
   if (!fw->tft_rail_on) {
-    uint32_t now_ms = board_millis();
     fw->tft_power_on_ms = now_ms;
     board_delay_us(2000U);
     uart7_tft_set_bus_power(true);
@@ -160,25 +225,35 @@ static void sync_power_rails(tk75_fw_t *fw)
   fw->tft_rail_on = true;
 }
 
-static void enter_battery_sleep(tk75_fw_t *fw)
+static void enter_energy_save(tk75_fw_t *fw)
 {
-  if (fw->asleep) {
+  if (fw->energy_save && (fw->asleep || fw->vbus_present || fw->active_conn_mode == TK75_CONN_USB)) {
     return;
   }
-  fw->asleep = true;
+  /* Persist any pending EEPROM edits before powering down rails */
+  if (fw->eeprom_dirty) {
+    flash_eeprom_save(flash_eeprom_at32_backend(), &fw->cfg, &fw->eeprom_slot);
+    fw->eeprom_dirty = false;
+  }
+  fw->energy_save = true;
+  if (!fw->vbus_present && fw->active_conn_mode != TK75_CONN_USB && !fw->asleep) {
+    fw->asleep = true;
+    spi3_rf_enter_sleep(fw->battery_pct);
+  }
   sync_power_rails(fw);
-  board_set_scan_rate_sleep(true);
-  spi3_rf_enter_sleep(fw->battery_pct);
+  update_adaptive_scan_rate(fw);
 }
 
 static void wake_from_sleep(tk75_fw_t *fw, uint32_t now_ms)
 {
   fw->last_activity_ms = now_ms;
-  if (!fw->asleep) {
+  if (!fw->energy_save && !fw->asleep) {
     return;
   }
-  fw->asleep = false;
-  board_set_scan_rate_sleep(false);
+  fw->energy_save       = false;
+  fw->asleep            = false;
+  fw->rgb_force_refresh = true;
+  update_adaptive_scan_rate(fw);
   sync_power_rails(fw);
   spi3_rf_wake();
   hud_engine_mark_options_dirty(&fw->hud);
@@ -222,12 +297,25 @@ static void apply_transport_mode(tk75_fw_t *fw, uint8_t new_conn_mode)
 
   spi3_rf_set_target_mode(rf_mode_for_conn(new_conn_mode, fw->cfg.rf_bt_slot));
   if (new_conn_mode == TK75_CONN_USB) {
+    if (!fw->usb_phy_on) {
+      board_usb_set_phy_power(true);
+      tusb_rhport_init_t dev_init = {
+        .role  = TUSB_ROLE_DEVICE,
+        .speed = TUSB_SPEED_HIGH,
+      };
+      tusb_init(BOARD_TUD_RHPORT, &dev_init);
+      fw->usb_phy_on = true;
+    }
     board_usb_set_connect(true);
     tud_connect();
-  } else {
+  } else if (fw->usb_phy_on) {
     tud_disconnect();
     board_usb_set_connect(false);
+    tud_deinit(BOARD_TUD_RHPORT);
+    board_usb_set_phy_power(false);
+    fw->usb_phy_on = false;
   }
+  update_adaptive_scan_rate(fw);
 }
 
 static socd_preset_def_t const k_socd_defs[3] = {
@@ -402,6 +490,8 @@ static bool handle_tk75_keycode(tk75_fw_t *fw, uint16_t kc)
         }
         if (cfg_changed) {
           apply_hall_config(fw);
+          spi3_rf_set_poll_rate(c->rf_poll_rate_idx);
+          update_adaptive_scan_rate(fw);
           sync_power_rails(fw);
           keymap_set_mac_mode(&fw->keymap, c->mac_mode != 0U);
           macro_player_set_speed(&fw->macro, c->macro_speed_idx);
@@ -518,7 +608,7 @@ static void on_keymap_action(uint16_t keycode, bool pressed, void *ctx)
   if (!pressed) {
     return;
   }
-  fw->last_activity_ms = now;
+  wake_from_sleep(fw, now);
 
   if (keycode == QK_BOOT) {
     fw->boot_jump_pending = true;
@@ -552,18 +642,21 @@ static void on_via_event(via_event_t const *evt, void *ctx)
       mark_eeprom_dirty(fw, now);
       break;
     case VIA_EVT_HALL_CONFIG_CHANGED:
+      wake_from_sleep(fw, now);
       apply_hall_config(fw);
       fw->hud.status_dirty = true;
       pixel_hud_mark_config_dirty(&fw->px_hud);
       mark_eeprom_dirty(fw, now);
       break;
     case VIA_EVT_RGB_CHANGED:
+      wake_from_sleep(fw, now);
       sync_power_rails(fw);
       fw->hud.status_dirty = true;
       pixel_hud_mark_config_dirty(&fw->px_hud);
       mark_eeprom_dirty(fw, now);
       break;
     case VIA_EVT_TFT_CHANGED:
+      wake_from_sleep(fw, now);
       if (fw->px_hud.detected) {
         if (fw->cfg.encoder_mode == 1U) {
           if (!pixel_hud_is_menu_open(&fw->px_hud)) {
@@ -588,11 +681,15 @@ static void on_via_event(via_event_t const *evt, void *ctx)
       mark_eeprom_dirty(fw, now);
       break;
     case VIA_EVT_RESET_EEPROM:
+      wake_from_sleep(fw, now);
       flash_eeprom_erase_all(flash_eeprom_at32_backend());
       tk75_cfg_set_defaults(&fw->cfg);
       flash_eeprom_save(flash_eeprom_at32_backend(), &fw->cfg, &fw->eeprom_slot);
       apply_hall_config(fw);
+      spi3_rf_set_poll_rate(fw->cfg.rf_poll_rate_idx);
+      update_adaptive_scan_rate(fw);
       sync_power_rails(fw);
+      pixel_hud_mark_config_dirty(&fw->px_hud);
       hud_engine_mark_options_dirty(&fw->hud);
       fw->eeprom_dirty = false;
       break;
@@ -613,9 +710,11 @@ static void on_via_event(via_event_t const *evt, void *ctx)
     case VIA_EVT_RF_CONFIG_CHANGED:
       keymap_set_mac_mode(&fw->keymap, fw->cfg.mac_mode != 0U);
       spi3_rf_set_poll_rate(fw->cfg.rf_poll_rate_idx);
+      update_adaptive_scan_rate(fw);
       if (fw->active_conn_mode == TK75_CONN_BT) {
         spi3_rf_set_target_mode(fw->cfg.rf_bt_slot);
       }
+      pixel_hud_mark_config_dirty(&fw->px_hud);
       hud_engine_mark_options_dirty(&fw->hud);
       mark_eeprom_dirty(fw, now);
       break;
@@ -705,7 +804,7 @@ static void refresh_via_diag(tk75_fw_t *fw)
   d->battery_pct     = fw->battery_pct;
   d->vbus_present    = fw->vbus_present ? 1U : 0U;
   d->charging        = fw->charging ? 1U : 0U;
-  d->asleep          = fw->asleep ? 1U : 0U;
+  d->asleep          = (fw->asleep || fw->energy_save) ? 1U : 0U;
   d->tft_rx_count    = fw->hud.rx_count;
   d->tft_last_cmd    = fw->hud.last_rx_cmd;
   d->tft_last_len    = fw->hud.last_rx_len;
@@ -770,6 +869,8 @@ static void route_encoder_to_hud(tk75_fw_t *fw, encoder_events_t const *ev, bool
     }
     if (changed) {
       apply_hall_config(fw);
+      spi3_rf_set_poll_rate(fw->cfg.rf_poll_rate_idx);
+      update_adaptive_scan_rate(fw);
       sync_power_rails(fw);
       keymap_set_mac_mode(&fw->keymap, fw->cfg.mac_mode != 0U);
       macro_player_set_speed(&fw->macro, fw->cfg.macro_speed_idx);
@@ -896,9 +997,8 @@ static void handle_encoder_step(tk75_fw_t *fw, encoder_events_t const *ev, uint3
 
 static uint16_t compensated_vbat_adc(tk75_fw_t const *fw)
 {
-  bool caps_side_on = (fw->cfg.caps_side_enabled != 0U) && ((active_host_leds(fw) & 0x02U) != 0U);
-  bool rgb_rail_on  = !fw->asleep && (fw->cfg.rgb_enabled != 0U || fw->cfg.side_enabled != 0U || caps_side_on);
-  uint32_t ch_sum   = 0U;
+  bool rgb_rail_on = fw->rgb_rail_on;
+  uint32_t ch_sum  = 0U;
   if (rgb_rail_on) {
     for (uint32_t i = 0U; i < RGB_LED_COUNT; i++) {
       ch_sum += (uint32_t)fw->leds[i].r + (uint32_t)fw->leds[i].g + (uint32_t)fw->leds[i].b;
@@ -1108,10 +1208,21 @@ static void service_housekeeping(tk75_fw_t *fw, uint32_t now_ms)
     sync_power_rails(fw);
   }
 
-  /* Keep WPM buckets & synced RTC wall clock ticking even while TFT is off or asleep */
-  hud_engine_update_wpm(&fw->hud, now_ms);
+  /* Keep WPM buckets & synced RTC wall clock ticking at 20 Hz (saves main-loop cycles) */
+  if ((uint32_t)(now_ms - fw->last_wpm_ms) >= 50U) {
+    fw->last_wpm_ms = now_ms;
+    hud_engine_update_wpm(&fw->hud, now_ms);
+  }
 
-  if (!fw->asleep && (uint32_t)(now_ms - fw->last_rgb_ms) >= RGB_REFRESH_PERIOD_MS && ws2812_is_ready()) {
+  /* Keep RGB rail synchronized with dynamic modal states (e.g. macro saved flash expiry) */
+  bool want_rgb = is_rgb_output_needed(fw, now_ms);
+  if (want_rgb != fw->rgb_rail_on) {
+    sync_power_rails(fw);
+  }
+
+  if (fw->rgb_rail_on &&
+      (fw->rgb_force_refresh || (uint32_t)(now_ms - fw->last_rgb_ms) >= RGB_REFRESH_PERIOD_MS) &&
+      ws2812_is_ready()) {
     fw->last_rgb_ms = now_ms;
     bool saved_flash = (fw->macro_rec.saved_until_ms != 0U) &&
                        ((int32_t)(fw->macro_rec.saved_until_ms - now_ms) > 0);
@@ -1134,10 +1245,17 @@ static void service_housekeeping(tk75_fw_t *fw, uint32_t now_ms)
       .now_ms             = now_ms,
     };
     rgb_effects_render(&rctx, fw->leds);
-    ws2812_show_async(fw->leds);
+    bool leds_changed = fw->rgb_force_refresh ||
+                        (memcmp(fw->leds, fw->sent_leds, sizeof(fw->leds)) != 0) ||
+                        ((uint32_t)(now_ms - fw->last_rgb_force_ms) >= 1000U);
+    if (leds_changed && ws2812_show_async(fw->leds)) {
+      memcpy(fw->sent_leds, fw->leds, sizeof(fw->sent_leds));
+      fw->rgb_force_refresh = false;
+      fw->last_rgb_force_ms = now_ms;
+    }
   }
 
-  if (!fw->asleep && fw->cfg.tft_enabled != 0U && fw->tft_raw_paused) {
+  if (fw->tft_rail_on && fw->tft_raw_paused) {
     uart7_rx_frame_t rx;
     while (uart7_tft_poll_rx(&rx)) {
       uint8_t n = (rx.payload_len < (uint8_t)sizeof(fw->tft_raw_rx_payload))
@@ -1151,7 +1269,7 @@ static void service_housekeeping(tk75_fw_t *fw, uint32_t now_ms)
       }
       fw->tft_raw_rx_ready = 1U;
     }
-  } else if (!fw->asleep && fw->cfg.tft_enabled != 0U) {
+  } else if (fw->tft_rail_on) {
     /* Poll UART7 RX continuously for sub-millisecond ACK pacing on Pixel HUD */
     uart7_rx_frame_t rx;
     while (uart7_tft_poll_rx(&rx)) {
@@ -1165,62 +1283,58 @@ static void service_housekeeping(tk75_fw_t *fw, uint32_t now_ms)
       if (fw->hud.wpm_current > fw->peak_wpm) {
         fw->peak_wpm = fw->hud.wpm_current;
       }
-      uint16_t max_travel   = 0U;
-      bool     any_actuated = false;
-      for (uint32_t i = 0U; i < HALL_SLOT_COUNT; i++) {
-        if (fw->hall.active_mask[i] == 0U) {
-          continue;
-        }
-        uint16_t um = fw->hall.states[i].travel_um;
-        if (um > max_travel) {
-          max_travel = um;
-        }
-        if (fw->hall.states[i].logical_pressed) {
-          any_actuated = true;
-        }
-      }
+      bool any_actuated = fw->hall.any_actuated;
       if (any_actuated) {
         fw->last_activity_ms = now_ms;
       }
-      bool show_spd = (fw->macro_spd_toast_until_ms != 0U) &&
-                      ((int32_t)(fw->macro_spd_toast_until_ms - now_ms) > 0);
-      pixel_hud_live_t live = {
-        .active_layer      = fw->sent_kbd.active_layer,
-        .battery_pct       = fw->battery_pct,
-        .host_leds         = active_host_leds(fw),
-        .conn_mode         = fw->active_conn_mode,
-        .bt_slot           = fw->cfg.rf_bt_slot,
-        .charging          = fw->charging,
-        .vbus_present      = fw->vbus_present,
-        .mac_mode          = (fw->cfg.mac_mode != 0U),
-        .wpm               = fw->hud.wpm_current,
-        .max_travel_um     = max_travel,
-        .any_actuated      = any_actuated,
-        .macro_recording   = macro_recorder_is_capturing(&fw->macro_rec) && !macro_recorder_is_reviewing(&fw->macro_rec),
-        .macro_reviewing   = macro_recorder_is_reviewing(&fw->macro_rec),
-        .macro_rec_slot    = fw->macro_rec.rec_slot,
-        .macro_rec_bytes   = fw->macro_rec.len,
-        .macro_edit_toks   = fw->macro_rec.tokens,
-        .macro_edit_count  = fw->macro_rec.tok_count,
-        .macro_edit_cursor = fw->macro_rec.cursor,
-        .macro_edit_rev    = fw->macro_rec.edit_rev,
-        .macro_speed_toast = show_spd ? macro_player_normalize_speed(fw->cfg.macro_speed_idx) : 0U,
-        .rtc_valid         = fw->hud.rtc_valid,
-        .rtc_hour          = fw->hud.rtc.hour,
-        .rtc_min           = fw->hud.rtc.min,
-        .rtc_sec           = fw->hud.rtc.sec,
-        .uptime_sec        = now_ms / 1000U,
-        .idle_ms           = (uint32_t)(now_ms - fw->last_activity_ms),
-        .peak_wpm          = fw->peak_wpm,
-        .session_keys      = fw->session_keys,
-        .cal_active        = hall_cal_is_active(&fw->hall_cal),
-        .cal_done_count    = fw->hall_cal.done_count,
-        .cal_total_keys    = fw->hall_cal.total_keys,
-        .cal_strength_pct  = fw->hall_cal.strength_pct,
-        .cal_key_done      = fw->hall_cal.active_done,
-      };
-      memcpy(live.cal_label, fw->hall_cal.active_label, sizeof(live.cal_label));
-      pixel_hud_set_live(&fw->px_hud, &live);
+      bool need_live_sync = fw->px_hud.full_redraw_needed ||
+                            fw->px_hud.body_redraw_needed ||
+                            any_actuated ||
+                            hall_cal_is_active(&fw->hall_cal) ||
+                            macro_recorder_is_capturing(&fw->macro_rec) ||
+                            ((uint32_t)(now_ms - fw->last_px_live_ms) >= 12U);
+      if (need_live_sync) {
+        fw->last_px_live_ms = now_ms;
+        bool show_spd = (fw->macro_spd_toast_until_ms != 0U) &&
+                        ((int32_t)(fw->macro_spd_toast_until_ms - now_ms) > 0);
+        pixel_hud_live_t live = {
+          .active_layer      = fw->sent_kbd.active_layer,
+          .battery_pct       = fw->battery_pct,
+          .host_leds         = active_host_leds(fw),
+          .conn_mode         = fw->active_conn_mode,
+          .bt_slot           = fw->cfg.rf_bt_slot,
+          .charging          = fw->charging,
+          .vbus_present      = fw->vbus_present,
+          .mac_mode          = (fw->cfg.mac_mode != 0U),
+          .wpm               = fw->hud.wpm_current,
+          .max_travel_um     = fw->hall.max_travel_um,
+          .any_actuated      = any_actuated,
+          .macro_recording   = macro_recorder_is_capturing(&fw->macro_rec) && !macro_recorder_is_reviewing(&fw->macro_rec),
+          .macro_reviewing   = macro_recorder_is_reviewing(&fw->macro_rec),
+          .macro_rec_slot    = fw->macro_rec.rec_slot,
+          .macro_rec_bytes   = fw->macro_rec.len,
+          .macro_edit_toks   = fw->macro_rec.tokens,
+          .macro_edit_count  = fw->macro_rec.tok_count,
+          .macro_edit_cursor = fw->macro_rec.cursor,
+          .macro_edit_rev    = fw->macro_rec.edit_rev,
+          .macro_speed_toast = show_spd ? macro_player_normalize_speed(fw->cfg.macro_speed_idx) : 0U,
+          .rtc_valid         = fw->hud.rtc_valid,
+          .rtc_hour          = fw->hud.rtc.hour,
+          .rtc_min           = fw->hud.rtc.min,
+          .rtc_sec           = fw->hud.rtc.sec,
+          .uptime_sec        = now_ms / 1000U,
+          .idle_ms           = (uint32_t)(now_ms - fw->last_activity_ms),
+          .peak_wpm          = fw->peak_wpm,
+          .session_keys      = fw->session_keys,
+          .cal_active        = hall_cal_is_active(&fw->hall_cal),
+          .cal_done_count    = fw->hall_cal.done_count,
+          .cal_total_keys    = fw->hall_cal.total_keys,
+          .cal_strength_pct  = fw->hall_cal.strength_pct,
+          .cal_key_done      = fw->hall_cal.active_done,
+        };
+        memcpy(live.cal_label, fw->hall_cal.active_label, sizeof(live.cal_label));
+        pixel_hud_set_live(&fw->px_hud, &live);
+      }
       pixel_hud_tick(&fw->px_hud, now_ms);
       if (fw->px_hud.macro_play_req < TK75_MACRO_COUNT) {
         macro_player_trigger(&fw->macro, fw->cfg.macros, fw->px_hud.macro_play_req, now_ms);
@@ -1231,9 +1345,8 @@ static void service_housekeeping(tk75_fw_t *fw, uint32_t now_ms)
       }
     } else {
       pixel_hud_tick(&fw->px_hud, now_ms);
-      /* Wait until power-on probe settles (900ms) & pixel_hud queue drains before stock HUD runs */
-      bool allow_stock = fw->px_hud.stock_ui_mode ||
-                         (!fw->px_hud.detected && (uint32_t)(now_ms - fw->tft_power_on_ms) >= 900U);
+      /* Wait until power-on probe settles (900ms) & pixel_hud queue drains before unpatched stock HUD runs */
+      bool allow_stock = (!fw->px_hud.detected && (uint32_t)(now_ms - fw->tft_power_on_ms) >= 900U);
       if (allow_stock && fw->px_hud.q_count == 0U && !fw->px_hud.awaiting_ack &&
           (uint32_t)(now_ms - fw->last_hud_ms) >= HUD_POLL_PERIOD_MS) {
         fw->last_hud_ms = now_ms;
@@ -1251,12 +1364,17 @@ static void service_housekeeping(tk75_fw_t *fw, uint32_t now_ms)
     fw->eeprom_dirty = false;
   }
 
-  if (!fw->asleep && !fw->vbus_present &&
-      fw->active_conn_mode != TK75_CONN_USB &&
-      fw->cfg.sleep_timeout_min > 0U) {
+  /* Configurable Deep Energy Save: powers off key RGB, sidelight & TFT across ALL modes (USB/2.4G/BT).
+   * If VBUS is unplugged while already in wireless energy-save, escalate cleanly to RF deep sleep too. */
+  if (fw->energy_save && !fw->asleep && !fw->vbus_present && fw->active_conn_mode != TK75_CONN_USB) {
+    enter_energy_save(fw);
+  } else if (!fw->energy_save && !fw->asleep &&
+             fw->cfg.sleep_timeout_min > 0U &&
+             !hall_cal_is_active(&fw->hall_cal) &&
+             !macro_recorder_is_capturing(&fw->macro_rec)) {
     uint32_t timeout_ms = (uint32_t)fw->cfg.sleep_timeout_min * 60000UL;
     if ((uint32_t)(now_ms - fw->last_activity_ms) >= timeout_ms) {
-      enter_battery_sleep(fw);
+      enter_energy_save(fw);
     }
   }
 }
@@ -1330,26 +1448,35 @@ int main(void)
   pixel_hud_init(&g_fw.px_hud, &g_fw.cfg, hud_uart7_tx_adapter, &g_fw);
 
   usb_hid_init(on_via_rx_packet, NULL);
-  board_usb_otghs_init();
-  tusb_rhport_init_t dev_init = {
-    .role  = TUSB_ROLE_DEVICE,
-    .speed = TUSB_SPEED_HIGH,
-  };
-  tusb_init(BOARD_TUD_RHPORT, &dev_init);
-  if (g_fw.active_conn_mode != TK75_CONN_USB) {
-    tud_disconnect();
-    board_usb_set_connect(false);
+  if (g_fw.active_conn_mode == TK75_CONN_USB) {
+    board_usb_set_phy_power(true);
+    tusb_rhport_init_t dev_init = {
+      .role  = TUSB_ROLE_DEVICE,
+      .speed = TUSB_SPEED_HIGH,
+    };
+    tusb_init(BOARD_TUD_RHPORT, &dev_init);
+    g_fw.usb_phy_on = true;
+  } else {
+    /* Power down OTGHS HS PHY & 48 MHz PLLU when booted in wireless battery mode */
+    board_usb_set_phy_power(false);
+    g_fw.usb_phy_on = false;
   }
   board_start_scan_timer(adc_scanner_start_frame_isr);
+  update_adaptive_scan_rate(&g_fw);
 
   while (1) {
-    tud_task();
+    if (g_fw.usb_phy_on) {
+      tud_task();
+    }
     uint32_t now_ms = board_millis();
     spi3_rf_service(now_ms, g_fw.battery_pct, on_rf_via_rx_packet, &g_fw);
 
     uint16_t const *frame = adc_scanner_poll_frame();
     if (frame != NULL) {
       hall_engine_process_frame(&g_fw.hall, frame);
+      if (g_fw.hall.any_actuated && (g_fw.energy_save || g_fw.asleep)) {
+        wake_from_sleep(&g_fw, now_ms);
+      }
     }
 
     if (g_fw.px_hud.cal_start_req) {
@@ -1377,7 +1504,7 @@ int main(void)
       .cfg                = &g_fw.cfg,
       .layer_state        = g_fw.keymap.layer_state,
       .now_ms             = now_ms,
-      .tft_review_enabled = (!g_fw.asleep && g_fw.cfg.tft_enabled != 0U && pixel_hud_is_active(&g_fw.px_hud)),
+      .tft_review_enabled = (g_fw.tft_rail_on && pixel_hud_is_active(&g_fw.px_hud)),
     };
     bool            was_cap = macro_recorder_is_capturing(&g_fw.macro_rec);
     macro_rec_evt_t mevt    = macro_recorder_tick(&g_fw.macro_rec, &mctx);
@@ -1409,7 +1536,13 @@ int main(void)
     }
 
     service_housekeeping(&g_fw, now_ms);
-    if (g_fw.asleep) {
+
+    /* Sleep CPU core between interrupts (OTGHS/TMR6/DMA/SysTick) for major battery savings */
+    bool usb_busy = g_fw.usb_phy_on && tud_task_event_ready();
+    bool hud_busy = g_fw.tft_rail_on && (g_fw.px_hud.q_count > 0U) && !g_fw.px_hud.awaiting_ack;
+    if (!usb_busy && !hud_busy && !adc_scanner_frame_pending() &&
+        !g_fw.via_reply_pending && !g_fw.boot_jump_pending &&
+        !spi3_rf_has_pending_work()) {
       board_wfi();
     }
   }

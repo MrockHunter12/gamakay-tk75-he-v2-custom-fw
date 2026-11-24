@@ -24,6 +24,9 @@ void adc_scanner_wait_idle(void);
 /** Returns pointer to newly completed 6x15 frame if available, else NULL. */
 uint16_t const *adc_scanner_poll_frame(void);
 
+/** Returns true when a completed 6x15 frame is waiting to be consumed (non-destructive). */
+bool adc_scanner_frame_pending(void);
+
 /** Return latest EWMA-filtered raw VBAT ADC sample (row=5, col=4), or 0 until primed. */
 uint16_t adc_scanner_get_vbat_raw(void);
 

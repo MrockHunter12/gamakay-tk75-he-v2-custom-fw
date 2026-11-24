@@ -75,6 +75,9 @@ typedef struct {
   hall_socd_runtime_t socd_rt[HALL_SOCD_MAX_PAIRS];
   uint8_t             active_mask[HALL_SLOT_COUNT]; /* 1 = populated switch, 0 = empty/VBAT */
   uint16_t            rail_scale_q12;               /* Common-mode Hall supply rail ratio (4096 = 1.0x) */
+  uint16_t            max_travel_um;                /* Deepest active key travel from latest processed frame */
+  uint16_t            pressed_count;                /* Logical pressed count from latest processed frame */
+  bool                any_actuated;                 /* True when >= 1 active key is logically pressed */
 } hall_engine_t;
 
 #ifdef __cplusplus
